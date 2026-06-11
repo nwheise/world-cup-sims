@@ -310,7 +310,8 @@ export function renderTeams(S, el) {
     </div>
     <h2>Your ranking <span class="muted small">(most → least want to see)</span></h2>
     <p class="muted small">Tap the star to pin a team as an absolute favorite
-    (★ = pinned: weight locked at 1.00, ahead of the head-to-head ranking).</p>
+    (★ = pinned: locked at 1.00, and always ranked above every unpinned team —
+    the rest top out at 0.85).</p>
     <ol class="ranking">
       ${ranking.map(({ t, w, c, pinned }) => `
         <li class="${c === 0 && !pinned ? "unrated" : ""} ${pinned ? "pinned" : ""}">

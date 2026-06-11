@@ -10,7 +10,7 @@
  */
 
 import { prepare, rankGroup } from "./sim-core.js";
-import { computeScores, computeCounts, computeWeights, pickPair } from "./prefs.js";
+import { computeScores, computeCounts, computeWeights, applyPins, pickPair } from "./prefs.js";
 import { renderCheer, renderMatches, renderTeams, renderProbs } from "./views.js";
 
 const LS = {
@@ -90,10 +90,9 @@ function computePool() {
 function computePrefs() {
   const scores = computeScores(S.pool, S.comparisons);
   S.counts = computeCounts(S.pool, S.comparisons);
-  S.weights = computeWeights(scores);
-  // Pinned favorites are hard-set to the maximum weight, overriding the
-  // head-to-head ranking entirely.
-  for (const t of S.pinned) if (t in S.weights) S.weights[t] = 1.0;
+  // Pinned favorites are locked at 1.0 and everything unpinned is compressed
+  // below them — a pin must always outrank the head-to-head ranking.
+  S.weights = applyPins(computeWeights(scores), S.pinned);
   if (!S.currentPair || !S.currentPair.every((t) => S.pool.includes(t))) {
     S.currentPair = pickPair(S.pool, scores, S.counts, S.currentPair);
   }

@@ -19,7 +19,8 @@ import {
   emphasize, assessLoyalty,
 } from "../site/js/sim-core.js";
 import {
-  computeScores, computeCounts, computeWeights, pickPair,
+  computeScores, computeCounts, computeWeights, applyPins, pickPair,
+  UNPINNED_CAP,
 } from "../site/js/prefs.js";
 
 const tournament = JSON.parse(readFileSync(new URL("../site/data/tournament.json", import.meta.url)));
@@ -271,6 +272,21 @@ test("prefs: Elo replay, weights, pair picking", () => {
   assert.notEqual(pair[0], pair[1]);
   // least-compared teams (C has 2... D has 0) must be offered
   assert.ok(pair.includes("D"), "least-compared team should be in the next pair");
+});
+
+test("applyPins: pinned teams strictly outrank every unpinned team", () => {
+  // No pins -> untouched (the head-to-head top keeps weight 1.0).
+  let w = applyPins({ A: 1.0, B: 0.7, C: 0.0 }, new Set());
+  assert.deepEqual(w, { A: 1.0, B: 0.7, C: 0.0 });
+  // Pin C (the head-to-head WORST): it takes 1.0, everyone else compresses
+  // below the cap — so nothing unpinned can tie a pin.
+  w = applyPins({ A: 1.0, B: 0.7, C: 0.0 }, new Set(["C"]));
+  assert.equal(w.C, 1.0);
+  assert.ok(Math.abs(w.A - UNPINNED_CAP) < 1e-12, `A=${w.A}`);
+  assert.ok(w.B < UNPINNED_CAP && w.A < w.C);
+  // Multiple pins both sit at 1.0; pins outside the pool are ignored.
+  w = applyPins({ A: 1.0, B: 0.7 }, new Set(["A", "B", "NotInPool"]));
+  assert.deepEqual(w, { A: 1.0, B: 1.0 });
 });
 
 // --- loyalty guard -------------------------------------------------------------------

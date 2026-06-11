@@ -50,6 +50,24 @@ export function computeWeights(scores) {
   return weights;
 }
 
+/** With any pins active, unpinned teams top out here — a pinned favorite must
+ *  always outrank everything that isn't pinned. */
+export const UNPINNED_CAP = 0.85;
+
+/**
+ * Apply pinned favorites to a weight map (mutates and returns it): pinned
+ * teams are locked at 1.0, and — so that "pinned" always means "above
+ * everything else" — all other weights are compressed into [0, UNPINNED_CAP].
+ * No pins in the pool -> weights are untouched.
+ */
+export function applyPins(weights, pinned, cap = UNPINNED_CAP) {
+  const active = [...pinned].filter((t) => t in weights);
+  if (!active.length) return weights;
+  for (const t of Object.keys(weights)) weights[t] *= cap;
+  for (const t of active) weights[t] = 1.0;
+  return weights;
+}
+
 /**
  * Most-informative next pairing: a least-compared team vs. its nearest rival
  * by current score. `avoid` (a 2-element array/set of names) prevents an

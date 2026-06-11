@@ -304,13 +304,13 @@ export function renderTeams(S, el) {
       </div>
     </div>
     <h2>Your ranking <span class="muted small">(most → least want to see)</span></h2>
-    <p class="muted small">📌 Pin a team to hard-set it as an absolute favorite
-    (weight 1.00, ahead of the head-to-head ranking).</p>
+    <p class="muted small">Tap the star to pin a team as an absolute favorite
+    (★ = pinned: weight locked at 1.00, ahead of the head-to-head ranking).</p>
     <ol class="ranking">
       ${ranking.map(({ t, w, c, pinned }) => `
         <li class="${c === 0 && !pinned ? "unrated" : ""} ${pinned ? "pinned" : ""}">
           <button class="pin ${pinned ? "on" : ""}" data-pin="${esc(t)}"
-            title="${pinned ? "Unpin" : "Pin as absolute favorite (weight 1.00)"}">📌</button>
+            title="${pinned ? "Unpin" : "Pin as absolute favorite (weight 1.00)"}">${pinned ? "★" : "☆"}</button>
           <span class="rk-team">${teamLabel(t)}</span>
           ${bar(w)}
           <span class="muted small">${w.toFixed(2)}${pinned ? " · pinned" : c < 2 ? " · few picks" : ""}</span>
@@ -336,7 +336,8 @@ export function renderProbs(S, el) {
     return top.map(([t, p]) =>
       `<li class="selectable ${t === selected ? "sel" : ""}" data-sel-team="${esc(t)}"
            data-mid="${esc(mid)}" data-slot="${slot}" title="Click to ask: how likely is this exact matchup?">
-        ${teamLabel(t)} <span class="p">${pct(p)}</span>${bar(p)}</li>`).join("") +
+        <span class="dot" aria-hidden="true"></span><span>${teamLabel(t)}</span>
+        <span class="p">${pct(p)}</span>${bar(p)}</li>`).join("") +
       (rest > 0 ? `<li class="muted small more" data-expand-slot data-mid="${esc(mid)}" data-slot="${slot}">+ ${rest} more…</li>` : "");
   };
 
@@ -353,7 +354,7 @@ export function renderProbs(S, el) {
       <div class="matchups">
         <h4>Most likely matchups</h4>
         <ul>${probs.matchups.slice(0, 3).map(([t1, t2, p]) =>
-          `<li>${teamLabel(t1)} <em>vs</em> ${teamLabel(t2)} <span class="p">${pct(p)}</span></li>`).join("")}
+          `<li><span>${teamLabel(t1)}</span><em>vs</em><span>${teamLabel(t2)}</span><span class="p">${pct(p)}</span></li>`).join("")}
         </ul>
       </div>` : "";
     // "What about X vs Y?" — a locked side counts as selected automatically.
@@ -454,6 +455,8 @@ export function renderProbs(S, el) {
           </select>
         </label>
       </div>
+      <p class="muted small">💡 In any match card below, tap one team on each side
+      (the ◌ dots) to see the odds of that exact matchup.</p>
     </div>
     ${yourSection}
     <h2>Champion odds</h2>

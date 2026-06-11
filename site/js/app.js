@@ -11,6 +11,7 @@
 
 import { prepare, rankGroup } from "./sim-core.js";
 import { computeScores, computeCounts, computeWeights, applyPins, pickPair } from "./prefs.js";
+import { displayName } from "./format.js";
 import { renderCheer, renderMatches, renderTeams, renderProbs } from "./views.js";
 
 const LS = {
@@ -39,6 +40,7 @@ const S = {
   pool: [], weights: {}, counts: new Map(), currentPair: null,
   cheerSort: "date", venueFilter: "",
   matchupSel: {}, expandedSlots: new Set(),  // transient probe state (probs tab)
+  teamsNotice: null,                         // transient feedback (teams tab)
   lastReqId: 0,
 };
 
@@ -193,22 +195,38 @@ function onAttendedChanged() {
 
 function wireEvents() {
   document.addEventListener("click", (ev) => {
-    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-expand-slot]");
+    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-expand-slot]");
     if (!t) return;
     if (t.dataset.tab) setTab(t.dataset.tab);
     else if (t.dataset.goto) setTab(t.dataset.goto);
     else if (t.dataset.pick) {
       S.comparisons.push([t.dataset.pick, t.dataset.loser]);
       save(LS.comparisons, S.comparisons);
+      S.teamsNotice = null;
       nextPair([t.dataset.pick, t.dataset.loser]);
       computePrefs();
       renderTeams(S, sections.teams);
       scheduleAnalyze();
+    } else if (t.dataset.tie !== undefined) {
+      if (!S.currentPair) return;
+      S.comparisons.push([S.currentPair[0], S.currentPair[1], "="]);
+      save(LS.comparisons, S.comparisons);
+      S.teamsNotice = null;
+      nextPair(S.currentPair);
+      computePrefs();
+      renderTeams(S, sections.teams);
+      scheduleAnalyze();
     } else if (t.dataset.skip !== undefined) {
+      S.teamsNotice = null;
       nextPair(S.currentPair);
       renderTeams(S, sections.teams);
     } else if (t.dataset.undo !== undefined) {
-      S.comparisons.pop();
+      const undone = S.comparisons.pop();
+      if (undone) {
+        S.teamsNotice = undone[2] === "="
+          ? `↩ Undid: ${displayName(undone[0])} = ${displayName(undone[1])} (equal preference)`
+          : `↩ Undid: ${displayName(undone[0])} over ${displayName(undone[1])}`;
+      }
       save(LS.comparisons, S.comparisons);
       computePrefs();
       renderTeams(S, sections.teams);

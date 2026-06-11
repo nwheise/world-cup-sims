@@ -274,6 +274,24 @@ test("prefs: Elo replay, weights, pair picking", () => {
   assert.ok(pair.includes("D"), "least-compared team should be in the next pair");
 });
 
+test("computeScores: equal-preference entries pull scores together", () => {
+  const pool = ["A", "B"];
+  // A tie between fresh teams changes nothing.
+  let scores = computeScores(pool, [["A", "B", "="]]);
+  assert.equal(scores.get("A"), scores.get("B"));
+  // A win then a tie: A still ahead, but by less than after the win alone.
+  const winOnly = computeScores(pool, [["A", "B"]]);
+  const winThenTie = computeScores(pool, [["A", "B"], ["A", "B", "="]]);
+  assert.ok(winThenTie.get("A") > winThenTie.get("B"), "A still preferred");
+  assert.ok(winThenTie.get("A") < winOnly.get("A"), "tie narrowed the gap");
+  // Symmetric zero-sum: total Elo is conserved.
+  assert.ok(Math.abs(winThenTie.get("A") + winThenTie.get("B") - 3000) < 1e-9);
+  // Ties count toward comparison counts (drives the adaptive pair picker).
+  const counts = computeCounts(pool, [["A", "B", "="]]);
+  assert.equal(counts.get("A"), 1);
+  assert.equal(counts.get("B"), 1);
+});
+
 test("applyPins: pinned teams strictly outrank every unpinned team", () => {
   // No pins -> untouched (the head-to-head top keeps weight 1.0).
   let w = applyPins({ A: 1.0, B: 0.7, C: 0.0 }, new Set());

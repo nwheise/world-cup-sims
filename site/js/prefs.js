@@ -19,14 +19,19 @@ function expected(sa, sb) {
   return 1.0 / (1.0 + Math.pow(10, (sb - sa) / ELO_SCALE));
 }
 
-/** Replay every [winner, loser] pick as an Elo update over `pool` teams. */
+/**
+ * Replay every pick as an Elo update over `pool` teams. Entries are
+ * [winner, loser] for a preference, or [a, b, "="] for declared equal
+ * preference (scored as a draw: both pulled toward each other).
+ */
 export function computeScores(pool, comparisons) {
   const scores = new Map(pool.map((t) => [t, INIT_ELO]));
-  for (const [w, l] of comparisons) {
-    if (!scores.has(w) || !scores.has(l)) continue; // team outside current pool
-    const ew = expected(scores.get(w), scores.get(l));
-    scores.set(w, scores.get(w) + K * (1 - ew));
-    scores.set(l, scores.get(l) - K * (1 - ew));
+  for (const [a, b, flag] of comparisons) {
+    if (!scores.has(a) || !scores.has(b)) continue; // team outside current pool
+    const ea = expected(scores.get(a), scores.get(b));
+    const sa = flag === "=" ? 0.5 : 1.0;  // a's "actual score" vs expectation
+    scores.set(a, scores.get(a) + K * (sa - ea));
+    scores.set(b, scores.get(b) + K * (ea - sa));
   }
   return scores;
 }

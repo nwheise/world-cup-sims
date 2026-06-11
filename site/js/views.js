@@ -289,24 +289,29 @@ export function renderTeams(S, el) {
 
   el.innerHTML = `
     <div class="card">
-      <p>Which team would you rather watch live? Click to pick — every pick sharpens
-      your ranking. Stop whenever you like.</p>
+      <p>Which of these two would you <strong>rather see play live</strong>?
+      Tap your preferred team — every pick sharpens your ranking. Stop whenever
+      you like.</p>
       <p class="muted small">${poolNote} ${S.comparisons.length} picks so far.</p>
       ${pair ? `
         <div class="duel">
           <button class="duel-btn" data-pick="${esc(pair[0])}" data-loser="${esc(pair[1])}">
             <span class="duel-flag">${flag(pair[0])}</span>${esc(displayName(pair[0]))}
           </button>
-          <span class="duel-vs">vs</span>
+          <span class="duel-vs">or</span>
           <button class="duel-btn" data-pick="${esc(pair[1])}" data-loser="${esc(pair[0])}">
             <span class="duel-flag">${flag(pair[1])}</span>${esc(displayName(pair[1]))}
           </button>
+        </div>
+        <div class="duel-tie">
+          <button class="btn" data-tie>🤝 no preference — they're equal</button>
         </div>` : `<p class="muted">Not enough teams to compare.</p>`}
       <div class="toolbar">
         <button class="btn small" data-skip>skip pair</button>
         <button class="btn small" data-undo ${S.comparisons.length ? "" : "disabled"}>undo last</button>
         <button class="btn small danger" data-reset-prefs ${S.comparisons.length ? "" : "disabled"}>reset all</button>
       </div>
+      ${S.teamsNotice ? `<p class="notice">${esc(S.teamsNotice)}</p>` : ""}
     </div>
     <h2>Your ranking <span class="muted small">(most → least want to see)</span></h2>
     <p class="muted small">Tap the star to pin a team as an absolute favorite

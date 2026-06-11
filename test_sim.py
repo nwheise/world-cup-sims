@@ -287,6 +287,74 @@ class TestCheerGuide(unittest.TestCase):
         self.assertEqual([(r["a"], r["b"], r["impact"]) for r in r1],
                          [(r["a"], r["b"], r["impact"]) for r in r2])
 
+    def test_analyze_attaches_loyalty_and_pseat(self):
+        rows, _ = cheer_guide.analyze(self._weights(), n_sims=1500, seed=7)
+        for r in rows:
+            # both participants have a per-outcome Seattle probability in [0,1]
+            for t in (r["a"], r["b"]):
+                self.assertIn(t, r["p_seat"])
+                for o, p in r["p_seat"][t].items():
+                    self.assertTrue(0.0 <= p <= 1.0)
+            # loyalty is either absent (not perverse) or a well-formed verdict
+            self.assertIn("loyalty", r)
+            if r["loyalty"] is not None:
+                loy = r["loyalty"]
+                self.assertIn(loy["against"], (r["a"], r["b"]))
+                self.assertAlmostEqual(loy["swing"], loy["p_rec"] - loy["p_win"])
+                self.assertEqual(loy["suppressible"],
+                                 loy["swing"] < cheer_guide.SWING_THRESHOLD)
+
+
+class TestLoyaltyGuard(unittest.TestCase):
+    """assess_loyalty: never advise cheering against a favorite unless it
+    meaningfully improves their odds of reaching Seattle."""
+
+    def test_rooting_for_your_favorite_is_not_perverse(self):
+        # You're advised to root for the team you prefer (a) — nothing perverse.
+        w = {"Mexico": 1.0, "South Africa": 0.1}
+        p_seat = {"Mexico": {"A": 0.3, "B": 0.02, "D": 0.05},
+                  "South Africa": {"A": 0.0, "B": 0.0, "D": 0.0}}
+        self.assertIsNone(
+            cheer_guide.assess_loyalty("Mexico", "South Africa", "A", p_seat, w))
+
+    def test_indifferent_when_you_dont_like_the_denied_team(self):
+        # Advised to root for b, denying a — but a is barely liked (below floor).
+        w = {"Mexico": 0.2, "South Africa": 0.1}
+        p_seat = {"Mexico": {"A": 0.02, "B": 0.3, "D": 0.05},
+                  "South Africa": {"A": 0.0, "B": 0.0, "D": 0.0}}
+        self.assertIsNone(
+            cheer_guide.assess_loyalty("Mexico", "South Africa", "B", p_seat, w))
+
+    def test_worth_it_perverse_call_is_kept(self):
+        # Favorite Mexico only reaches Seattle by losing (3rd-place route), and
+        # it genuinely pays off: 2% -> 30%. Flagged perverse but NOT suppressed.
+        w = {"Mexico": 1.0, "South Africa": 0.1}
+        p_seat = {"Mexico": {"A": 0.02, "B": 0.30, "D": 0.05},
+                  "South Africa": {"A": 0.0, "B": 0.0, "D": 0.0}}
+        loy = cheer_guide.assess_loyalty("Mexico", "South Africa", "B", p_seat, w)
+        self.assertEqual(loy["against"], "Mexico")
+        self.assertAlmostEqual(loy["swing"], 0.28)
+        self.assertFalse(loy["suppressible"])
+
+    def test_pointless_perverse_call_is_suppressed(self):
+        # Same setup but the losing route barely helps (2% -> 4%): suppressed.
+        w = {"Germany": 1.0, "Ecuador": 0.1}
+        p_seat = {"Germany": {"A": 0.02, "B": 0.04, "D": 0.03},
+                  "Ecuador": {"A": 0.0, "B": 0.0, "D": 0.0}}
+        loy = cheer_guide.assess_loyalty("Germany", "Ecuador", "B", p_seat, w)
+        self.assertEqual(loy["against"], "Germany")
+        self.assertAlmostEqual(loy["swing"], 0.02)
+        self.assertTrue(loy["suppressible"])
+
+    def test_draw_that_denies_a_favorite_is_perverse(self):
+        w = {"Mexico": 1.0, "South Africa": 0.1}
+        p_seat = {"Mexico": {"A": 0.30, "B": 0.02, "D": 0.04},
+                  "South Africa": {"A": 0.0, "B": 0.0, "D": 0.0}}
+        loy = cheer_guide.assess_loyalty("Mexico", "South Africa", "D", p_seat, w)
+        self.assertEqual(loy["against"], "Mexico")
+        # swing vs. Mexico winning (A): 0.04 - 0.30 < 0 -> clearly suppressible
+        self.assertTrue(loy["suppressible"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

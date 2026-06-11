@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World Cup 2026 — Who Should I Cheer For?</title>
+<meta name="description" content="Pick the World Cup 2026 matches you're attending, rank the teams you want to see, and get a per-game cheering guide powered by a Monte Carlo simulation of the whole tournament.">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>⚽</text></svg>">
+</head>
+<body>
+<header>
+  <h1>⚽ World Cup 2026 — who should I cheer for?</h1>
+  <p class="tagline">Attending matches this summer? Tell it which games and which teams you
+  love, and a full-tournament Monte Carlo simulation tells you who to root for in every
+  remaining game — plus live-updating odds of who you'll actually see.</p>
+  <nav>
+    <button data-tab="guide">🎺 Cheer guide</button>
+    <button data-tab="matches">🎟️ My matches</button>
+    <button data-tab="teams">❤️ My teams</button>
+    <button data-tab="probs">📊 Probabilities</button>
+  </nav>
+</header>
+
+<main>
+  <section id="tab-guide"><p class="muted">Loading…</p></section>
+  <section id="tab-matches" hidden><p class="muted">Loading…</p></section>
+  <section id="tab-teams" hidden><p class="muted">Loading…</p></section>
+  <section id="tab-probs" hidden><p class="muted">Loading…</p></section>
+</main>
+
+<footer>
+  <details>
+    <summary>How this works</summary>
+    <ul>
+      <li><strong>Model:</strong> goals are Poisson draws scaled by an Elo expectation on
+        FIFA's 600-point scale (avg 2.7 goals/match); knockout ties break with a small
+        skill edge as an extra-time/penalties proxy. Ratings are the April 2026 FIFA
+        points (estimates for unranked teams). No host advantage, no injuries.</li>
+      <li><strong>Rules:</strong> official 2026 regulations end to end — head-to-head-first
+        group tiebreakers, ranking of third-placed teams, and FIFA's real Annex C table
+        (all 495 combinations) routing the best 8 thirds into the bracket.</li>
+      <li><strong>Live results:</strong> actual scores are merged in as the tournament is
+        played (refreshed every few hours from the public-domain
+        <a href="https://github.com/openfootball/worldcup.json">openfootball</a> dataset);
+        the simulation only fills in what hasn't happened yet.</li>
+      <li><strong>Cheer guide:</strong> one big simulation records every game's outcome and
+        who ends up in your attended matches; bucketing by outcome gives the causal effect
+        of each result on the expected (favorite-weighted) quality of your lineup. A
+        loyalty guard stops it from telling you to root against a team you love unless the
+        payoff is real.</li>
+      <li><strong>Privacy:</strong> everything runs in your browser; your picks live in
+        localStorage and never leave your device.</li>
+    </ul>
+  </details>
+  <p class="muted small">Static site — simulations run client-side.
+    <a href="https://github.com/nwheise/world-cup-sims">Source on GitHub</a>.</p>
+</footer>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

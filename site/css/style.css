@@ -1,0 +1,167 @@
+/* World Cup 2026 cheer guide — single stylesheet, no framework. */
+
+:root {
+  --bg: #0e1320;
+  --panel: #1a2236;
+  --panel-2: #222c45;
+  --text: #e8ecf5;
+  --muted: #93a0bd;
+  --accent: #4ade80;
+  --accent-2: #60a5fa;
+  --warn: #fbbf24;
+  --danger: #f87171;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0 auto;
+  max-width: 980px;
+  padding: 0 16px 64px;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+header { padding-top: 28px; }
+h1 { font-size: 1.7rem; margin: 0 0 6px; }
+.tagline { color: var(--muted); margin: 0 0 18px; max-width: 60rem; }
+h2 { font-size: 1.15rem; margin: 28px 0 10px; }
+h3.datehead {
+  font-size: 0.95rem; color: var(--accent-2);
+  margin: 22px 0 6px; border-bottom: 1px solid var(--panel-2); padding-bottom: 4px;
+}
+a { color: var(--accent-2); }
+
+nav { display: flex; gap: 8px; flex-wrap: wrap; position: sticky; top: 0;
+      background: var(--bg); padding: 10px 0; z-index: 5; }
+nav button {
+  background: var(--panel); color: var(--text); border: 1px solid var(--panel-2);
+  border-radius: 999px; padding: 8px 16px; font-size: 0.95rem; cursor: pointer;
+}
+nav button.active { background: var(--accent); color: #06281a; border-color: var(--accent); font-weight: 600; }
+
+.card {
+  background: var(--panel); border: 1px solid var(--panel-2);
+  border-radius: var(--radius); padding: 14px 16px; margin: 10px 0;
+}
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; }
+.warn { color: var(--warn); }
+.error { color: var(--danger); }
+.note { margin: 6px 0; color: var(--muted); }
+.chip {
+  display: inline-block; background: var(--panel-2); color: var(--accent-2);
+  border-radius: 999px; padding: 1px 9px; font-size: 0.75rem; white-space: nowrap;
+}
+.chip.upset { background: var(--warn); color: #422006; font-weight: 600; }
+.chip.attend { background: var(--accent); color: #06281a; font-weight: 600; }
+.score { color: var(--accent); font-weight: 700; margin-left: 6px; }
+
+.btn {
+  background: var(--panel-2); color: var(--text); border: 1px solid #31405f;
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 0.9rem;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent-2); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn.small { padding: 3px 10px; font-size: 0.8rem; }
+.btn.active { background: var(--accent-2); color: #0b1c33; font-weight: 600; }
+.btn.danger { color: var(--danger); }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+select {
+  background: var(--panel-2); color: var(--text); border: 1px solid #31405f;
+  border-radius: 8px; padding: 5px 8px; font-size: 0.9rem;
+}
+
+.bar {
+  display: inline-block; vertical-align: middle; width: 110px; height: 7px;
+  background: #0a0f1c; border-radius: 4px; overflow: hidden; margin: 0 8px;
+}
+.bar > span { display: block; height: 100%; background: var(--accent-2); }
+.bar.impact > span { background: var(--accent); }
+
+/* --- onboarding --- */
+.onboard { background: var(--panel); border-radius: var(--radius); padding: 18px; }
+.onboard ol { padding-left: 20px; }
+.onboard li { margin: 12px 0; }
+.onboard li .btn { margin-left: 10px; }
+.onboard li.done { opacity: 0.65; }
+
+/* --- cheer guide --- */
+.cheer-controls { display: flex; align-items: baseline; gap: 14px; }
+.seg { display: inline-flex; gap: 4px; }
+.cheer-card { padding: 12px 16px; }
+.cheer-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.cheer-head .matchup { font-weight: 600; }
+.cheer-head .matchup em { color: var(--muted); font-style: normal; font-weight: 400; }
+.cheer-head .when { margin-left: auto; font-size: 0.8rem; }
+.cheer-rec { font-size: 1.15rem; margin: 6px 0 2px; }
+.cheer-rec strong { color: var(--accent); }
+.cheer-impact { display: flex; align-items: center; font-size: 0.8rem; }
+.cheer-impact .bar { margin-left: 0; width: 160px; }
+.loyalty { color: var(--warn); font-size: 0.9rem; margin: 6px 0 0; }
+.summary p { margin: 4px 0; }
+
+/* --- matches --- */
+.match-row {
+  display: flex; gap: 10px; align-items: baseline; padding: 7px 10px;
+  border-radius: 8px; cursor: pointer; flex-wrap: wrap;
+}
+.match-row:hover { background: var(--panel); }
+.match-row.selected { background: var(--panel); outline: 1px solid var(--accent); }
+.match-row .time { width: 70px; flex-shrink: 0; font-size: 0.85rem; }
+.match-row .label { flex: 1 1 280px; }
+.match-row .label em { color: var(--muted); font-style: normal; }
+.match-row .venue { font-size: 0.8rem; }
+.match-row input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+/* --- teams / duel --- */
+.duel { display: flex; gap: 14px; align-items: center; justify-content: center; margin: 18px 0; }
+.duel-vs { color: var(--muted); }
+.duel-btn {
+  flex: 1; max-width: 280px; background: var(--panel-2); color: var(--text);
+  border: 2px solid #31405f; border-radius: 14px; padding: 18px 10px;
+  font-size: 1.1rem; font-weight: 600; cursor: pointer;
+}
+.duel-btn:hover { border-color: var(--accent); background: #243150; }
+.duel-flag { display: block; font-size: 2.2rem; margin-bottom: 6px; }
+.ranking { padding-left: 0; counter-reset: rk; list-style: none; }
+.ranking li {
+  display: flex; align-items: center; gap: 8px; padding: 4px 8px;
+  border-radius: 6px; counter-increment: rk;
+}
+.ranking li::before { content: counter(rk) "."; color: var(--muted); width: 26px; text-align: right; }
+.ranking li:nth-child(odd) { background: rgba(255, 255, 255, 0.025); }
+.ranking li.unrated { opacity: 0.55; }
+.ranking .rk-team { flex: 0 0 220px; }
+
+/* --- probabilities --- */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
+.grid .card { margin: 0; }
+.ko-card header { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
+.ko-card.attending { outline: 1px solid var(--accent); }
+.ko-card .slots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ko-card h4 { margin: 0 0 6px; font-size: 0.8rem; color: var(--accent-2); font-weight: 600; }
+.ko-card ul, .champ { list-style: none; margin: 0; padding: 0; }
+.ko-card li, .champ li { display: flex; align-items: center; font-size: 0.85rem; padding: 1px 0; }
+.ko-card li .p, .champ .p { margin-left: auto; font-variant-numeric: tabular-nums; }
+.ko-card li .bar { width: 44px; flex-shrink: 0; }
+.champ .bar { width: 140px; }
+.champ li { max-width: 460px; }
+.ko-card li.locked { color: var(--accent); font-weight: 600; }
+.ko-card .result { margin: 0 0 8px; }
+.group-card table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.group-card th { color: var(--muted); font-weight: 500; text-align: right; padding: 2px 4px; }
+.group-card td { padding: 2px 4px; text-align: right; font-variant-numeric: tabular-nums; }
+.group-card td:first-child, .group-card th:first-child { text-align: left; }
+
+footer { margin-top: 48px; border-top: 1px solid var(--panel-2); padding-top: 16px; }
+footer summary { cursor: pointer; color: var(--muted); }
+footer ul { color: var(--muted); font-size: 0.9rem; }
+
+@media (max-width: 640px) {
+  .ranking .rk-team { flex-basis: 150px; }
+  .cheer-head .when { margin-left: 0; }
+  .match-row .time { width: 60px; }
+}

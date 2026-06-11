@@ -1,0 +1,338 @@
+/*
+ * Node test suite for the website's JS simulator (site/js/sim-core.js) and
+ * preference module (site/js/prefs.js). Mirrors the invariants of the Python
+ * test_sim.py and — crucially — cross-validates the port against the Python
+ * sim's published findings (CLAUDE.md "Key findings"): Belgium ~58% to appear
+ * in Match 82, USA ~31% in Match 94, etc.
+ *
+ * Run from the repo root:  node --test tests/
+ */
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+import {
+  makeRng, expectedScore, simulateMatch, rankGroup,
+  prepare, prepareResults, runSims,
+  appearanceProbs, groupProbs, analyzeCheer,
+  emphasize, assessLoyalty,
+} from "../site/js/sim-core.js";
+import {
+  computeScores, computeCounts, computeWeights, pickPair,
+} from "../site/js/prefs.js";
+
+const tournament = JSON.parse(readFileSync(new URL("../site/data/tournament.json", import.meta.url)));
+const prep = prepare(tournament);
+const noResults = prepareResults(prep, { group_results: {}, knockout: {} });
+
+const GROUP_LETTERS = "ABCDEFGHIJKL";
+const teamIdx = (name) => prep.teams.indexOf(name);
+
+// Shared seeded run used by several tests (5k sims keeps the suite fast).
+const N = 5000;
+const store = runSims(prep, noResults, N, 42);
+
+// --- data integrity ----------------------------------------------------------
+
+test("prepare: 48 distinct rated teams, 72 group games, 32 knockout matches", () => {
+  assert.equal(prep.teams.length, 48);
+  assert.equal(new Set(prep.teams).size, 48);
+  for (const r of prep.ratings) assert.ok(r > 1000);
+  assert.equal(new Set(prep.ratings).size, 48, "ratings must stay unique (FIFA-ranking tiebreaker)");
+  assert.equal(prep.groupGames.length, 72);
+  assert.equal(prep.ko.length, 32);
+  assert.equal(prep.annex.size, 495);
+  for (const games of prep.gamesOfGroup) assert.equal(games.length, 6);
+});
+
+test("match model: Elo symmetry and knockout never ties", () => {
+  assert.ok(Math.abs(expectedScore(1500, 1500) - 0.5) < 1e-12);
+  assert.ok(Math.abs(expectedScore(1800, 1500) + expectedScore(1500, 1800) - 1) < 1e-12);
+  assert.ok(expectedScore(1800, 1500) > 0.5);
+  const rnd = makeRng(7);
+  for (let i = 0; i < 2000; i++) {
+    const [ga, gb] = simulateMatch(1600, 1600, true, rnd);
+    assert.notEqual(ga, gb);
+  }
+});
+
+// --- group ranking (2026 head-to-head-first tiebreakers) ----------------------
+
+test("rankGroup: head-to-head beats overall goal difference", () => {
+  // W beats L head-to-head but ends with much worse overall GD; both finish
+  // on 6 points. 2026 rules: H2H first => W ranks above L.
+  const ids = [0, 1, 2, 3]; // W, L, m1, m2
+  const ratings = new Float64Array([1500, 1510, 1400, 1410]);
+  const games = [
+    { a: 0, b: 1, ga: 1, gb: 0 },  // W beats L h2h
+    { a: 0, b: 2, ga: 1, gb: 0 },  // W beats m1
+    { a: 0, b: 3, ga: 0, gb: 1 },  // W loses to m2  -> W: 6 pts, GD 0
+    { a: 1, b: 2, ga: 9, gb: 0 },  // L crushes m1
+    { a: 1, b: 3, ga: 2, gb: 1 },  // L beats m2     -> L: 6 pts, GD +9
+    { a: 2, b: 3, ga: 0, gb: 0 },
+  ];
+  const { order, pts, gd } = rankGroup(ids, games, ratings);
+  assert.equal(pts.get(0), 6);
+  assert.equal(pts.get(1), 6);
+  assert.ok(gd.get(1) > gd.get(0), "L must have better overall GD for the test to bite");
+  assert.equal(order[0], 0, "head-to-head winner must rank first despite worse GD");
+  assert.equal(order[1], 1);
+});
+
+test("rankGroup: points dominate everything", () => {
+  const ids = [0, 1, 2, 3];
+  const ratings = new Float64Array([1400, 1500, 1600, 1700]);
+  const games = [
+    { a: 0, b: 1, ga: 1, gb: 0 }, { a: 0, b: 2, ga: 1, gb: 0 },
+    { a: 0, b: 3, ga: 1, gb: 0 }, { a: 1, b: 2, ga: 0, gb: 0 },
+    { a: 1, b: 3, ga: 0, gb: 0 }, { a: 2, b: 3, ga: 0, gb: 0 },
+  ];
+  const { order } = rankGroup(ids, games, ratings);
+  assert.equal(order[0], 0);
+});
+
+// --- full-tournament invariants ------------------------------------------------
+
+test("simulation invariants across sims", () => {
+  const gIdx = GROUP_LETTERS.indexOf("G");
+  const thirdSlots = { 74: "ABCDF", 77: "CDFGH", 79: "CEFHI", 80: "EHIJK",
+                       81: "BEFIJ", 82: "AEHIJ", 85: "EFGIJ", 87: "DEIJL" };
+  const groupOf = new Map();
+  GROUP_LETTERS.split("").forEach((L, g) =>
+    tournament.groups[L].forEach((t) => groupOf.set(teamIdx(t), L)));
+
+  for (let s = 0; s < Math.min(N, 500); s++) {
+    // every group position is filled by a team from that group
+    for (let g = 0; g < 12; g++) {
+      const four = [0, 1, 2, 3].map((i) => store.positions[s * 48 + 4 * g + i]);
+      assert.equal(new Set(four).size, 4);
+      for (const t of four) assert.equal(groupOf.get(t), GROUP_LETTERS[g]);
+    }
+    // M82 home team is the Group G winner
+    const m82i = 82 - 73;
+    assert.equal(store.koTeams[s * 64 + 2 * m82i],
+                 store.positions[s * 48 + 4 * gIdx]);
+    // third-place slots are filled from slot-legal groups
+    for (const [num, allowed] of Object.entries(thirdSlots)) {
+      const i = +num - 73;
+      const third = store.koTeams[s * 64 + 2 * i + 1];
+      assert.ok(allowed.includes(groupOf.get(third)),
+        `m${num} third from group ${groupOf.get(third)} not in ${allowed}`);
+    }
+    // M94 participants are the winners of M81 and M82
+    const m94i = 94 - 73;
+    assert.equal(store.koTeams[s * 64 + 2 * m94i], store.koWin[s * 32 + (81 - 73)]);
+    assert.equal(store.koTeams[s * 64 + 2 * m94i + 1], store.koWin[s * 32 + (82 - 73)]);
+    // the final's winner is one of its participants
+    const fi = 104 - 73;
+    assert.ok([store.koTeams[s * 64 + 2 * fi], store.koTeams[s * 64 + 2 * fi + 1]]
+      .includes(store.koWin[s * 32 + fi]));
+  }
+});
+
+test("seed reproducibility", () => {
+  const a = runSims(prep, noResults, 200, 123);
+  const b = runSims(prep, noResults, 200, 123);
+  assert.deepEqual(a.koWin, b.koWin);
+  assert.deepEqual(a.outcomes, b.outcomes);
+  const c = runSims(prep, noResults, 200, 124);
+  assert.notDeepEqual(a.koWin, c.koWin);
+});
+
+// --- cross-validation against the Python sim's published findings ---------------
+
+test("appearance probabilities match the Python sim's findings", () => {
+  const probs = appearanceProbs(prep, store);
+  // appearanceProbs returns team INDICES per slot (the worker maps to names)
+  const p = (matchNum, team) => {
+    const { slot1, slot2 } = probs.matches[matchNum - 73];
+    const hit = [...slot1, ...slot2].find(([t]) => t === teamIdx(team));
+    return hit ? hit[1] : 0;
+  };
+  // CLAUDE.md key findings (20k sims): Belgium ~58% / Iran ~27% in M82;
+  // Belgium ~42%, USA ~31% in M94. Allow generous MC slack at 5k sims.
+  assert.ok(Math.abs(p(82, "Belgium") - 0.58) < 0.05, `Belgium m82 = ${p(82, "Belgium")}`);
+  assert.ok(Math.abs(p(82, "Iran") - 0.27) < 0.05, `Iran m82 = ${p(82, "Iran")}`);
+  assert.ok(Math.abs(p(94, "Belgium") - 0.42) < 0.05, `Belgium m94 = ${p(94, "Belgium")}`);
+  assert.ok(Math.abs(p(94, "USA") - 0.31) < 0.05, `USA m94 = ${p(94, "USA")}`);
+  // Annex C structural bias: Germany 3rd -> Seattle is ~dead (~0.2%)
+  assert.ok(p(82, "Germany") < 0.02, `Germany m82 = ${p(82, "Germany")}`);
+  // each slot's probabilities sum to 1
+  for (const { slot1, slot2 } of probs.matches) {
+    for (const list of [slot1, slot2]) {
+      const sum = list.reduce((acc, [, q]) => acc + q, 0);
+      assert.ok(Math.abs(sum - 1) < 1e-9);
+    }
+  }
+  const champSum = probs.champion.reduce((acc, [, q]) => acc + q, 0);
+  assert.ok(Math.abs(champSum - 1) < 1e-9);
+});
+
+test("group probabilities are coherent", () => {
+  const gp = groupProbs(prep, store);
+  for (const t of ["USA", "Belgium", "Haiti"]) {
+    const i = teamIdx(t);
+    const top2 = gp.first[i] + gp.second[i];
+    assert.ok(gp.advance[i] >= top2 - 1e-9, `${t}: advance >= top2`);
+    assert.ok(gp.advance[i] <= top2 + gp.third[i] + 1e-9, `${t}: advance <= top2+third`);
+  }
+  const usa = teamIdx("USA");
+  assert.ok(gp.first[usa] > 0.3, "USA should usually be in the top 2 of group D");
+});
+
+// --- known results are honored ---------------------------------------------------
+
+test("prepareResults: real scores pin outcomes; played games leave the cheer rows", () => {
+  const g0 = prep.groupGames[0]; // Mexico vs South Africa
+  const fixed = prepareResults(prep, {
+    group_results: { [g0.id]: [3, 0] },
+    knockout: {},
+  });
+  assert.equal(fixed.playedCount, 1);
+  const st = runSims(prep, fixed, 300, 42);
+  for (let s = 0; s < 300; s++) {
+    assert.equal(st.outcomes[s * 72 + g0.idx], 0, "fixed result must hold in every sim");
+  }
+  const { rows } = analyzeCheer(prep, fixed, st, { Mexico: 1.0 }, ["m82", "m94"]);
+  assert.ok(!rows.some((r) => r.id === g0.id), "played game must not be recommended");
+});
+
+test("prepareResults: known knockout winner is honored when participants match", () => {
+  // Pin every Group A game so Mexico wins the group deterministically, then
+  // pin M79 (1A vs third): winner = Mexico.
+  const groupA = tournament.groups.A;
+  const fixedScores = {};
+  for (const g of prep.groupGames.filter((g) => g.group === 0)) {
+    const aName = prep.teams[g.a], bName = prep.teams[g.b];
+    if (aName === "Mexico") fixedScores[g.id] = [2, 0];
+    else if (bName === "Mexico") fixedScores[g.id] = [0, 2];
+    else fixedScores[g.id] = [1, 1];
+  }
+  const fixed = prepareResults(prep, {
+    group_results: fixedScores,
+    knockout: { m79: { team1: "Mexico", team2: "whoever", winner: "Mexico" } },
+  });
+  const st = runSims(prep, fixed, 200, 42);
+  const i79 = 79 - 73;
+  for (let s = 0; s < 200; s++) {
+    assert.equal(prep.teams[st.koTeams[s * 64 + 2 * i79]], "Mexico");
+    assert.equal(prep.teams[st.koWin[s * 32 + i79]], "Mexico");
+  }
+  assert.equal(groupA.length, 4);
+});
+
+// --- preference math ----------------------------------------------------------------
+
+test("emphasize: anchored, convex", () => {
+  assert.equal(emphasize(0), 0);
+  assert.ok(Math.abs(emphasize(1) - 1) < 1e-12);
+  assert.ok(emphasize(0.5) < 0.5, "convex curve dips below the diagonal");
+  assert.equal(emphasize(0.5, 0), 0.5, "gamma=0 is linear");
+});
+
+test("prefs: Elo replay, weights, pair picking", () => {
+  const pool = ["A", "B", "C", "D"];
+  const scores = computeScores(pool, [["A", "B"], ["A", "C"], ["B", "C"]]);
+  assert.ok(scores.get("A") > scores.get("B"));
+  assert.ok(scores.get("B") > scores.get("C"));
+  const weights = computeWeights(scores);
+  assert.equal(Math.max(...Object.values(weights)), 1);
+  assert.equal(Math.min(...Object.values(weights)), 0);
+  const flat = computeWeights(computeScores(pool, []));
+  assert.equal(flat.A, 0.5);
+  const counts = computeCounts(pool, [["A", "B"]]);
+  const rnd = makeRng(1);
+  const pair = pickPair(pool, scores, counts, null, rnd);
+  assert.equal(pair.length, 2);
+  assert.notEqual(pair[0], pair[1]);
+  // least-compared teams (C has 2... D has 0) must be offered
+  assert.ok(pair.includes("D"), "least-compared team should be in the next pair");
+});
+
+// --- loyalty guard -------------------------------------------------------------------
+
+test("assessLoyalty: ported semantics", () => {
+  // Rooting for B against a liked A, with a big swing -> perverse but worth it.
+  let loy = assessLoyalty(0.9, 0.1, "B", { A: 0.09, B: 0.25 }, { A: 0.0, B: 0.0 });
+  assert.ok(loy && !loy.againstIsA === false); // against A
+  assert.ok(loy.againstIsA);
+  assert.ok(Math.abs(loy.swing - 0.16) < 1e-9);
+  assert.equal(loy.suppressible, false);
+  // Tiny swing -> suppressible.
+  loy = assessLoyalty(0.9, 0.1, "B", { A: 0.02, B: 0.03 }, { A: 0, B: 0 });
+  assert.ok(loy.suppressible);
+  // Not perverse: you're told to root FOR the team you prefer.
+  assert.equal(assessLoyalty(0.9, 0.1, "A", { A: 0.5, B: 0.1 }, { A: 0, B: 0 }), null);
+  // Not perverse: you don't like either side.
+  assert.equal(assessLoyalty(0.2, 0.1, "B", { A: 0.5, B: 0.1 }, { A: 0, B: 0 }), null);
+  // Draw recommended against the liked side.
+  loy = assessLoyalty(0.8, 0.2, "D", { A: 0.10, B: 0.0, D: 0.12 }, { A: 0, B: 0, D: 0 });
+  assert.ok(loy.againstIsA);
+  assert.ok(Math.abs(loy.swing - 0.02) < 1e-9);
+});
+
+// --- cheer guide end-to-end ------------------------------------------------------------
+
+test("analyzeCheer: USA fan attending Seattle wants USA to win its group games", () => {
+  const weights = Object.fromEntries(prep.teams.map((t) => [t, 0.05]));
+  weights.USA = 1.0;
+  const { rows, summary } = analyzeCheer(prep, noResults, store, weights, ["m82", "m94"]);
+  assert.equal(summary.topTeam, "USA");
+  assert.ok(summary.pTopInLineup > 0.15 && summary.pTopInLineup < 0.5,
+    `P(USA in Seattle lineup) = ${summary.pTopInLineup} (Python: ~0.31)`);
+  assert.equal(rows.length, 72, "all group games scored, none played yet");
+  // USA's three group games should advise rooting for USA, and they should be
+  // among the highest-impact games (USA must WIN group D to route to Seattle).
+  const usaRows = rows.filter((r) => r.a === "USA" || r.b === "USA");
+  assert.equal(usaRows.length, 3);
+  for (const r of usaRows) {
+    const rec = r.best === "A" ? r.a : r.best === "B" ? r.b : "DRAW";
+    assert.equal(rec, "USA", `${r.a} vs ${r.b}: expected USA, got ${rec}`);
+    assert.ok(r.significant, "USA games must clear the noise floor");
+    assert.equal(r.loyalty, null, "rooting for your favorite is never perverse");
+  }
+  const top10 = rows.slice(0, 10);
+  assert.ok(top10.some((r) => r.a === "USA" || r.b === "USA"),
+    "a USA game should be among the most impactful");
+});
+
+test("analyzeCheer: attended group game contributes its fixed teams", () => {
+  // Attending only a single group game: lineup is deterministic, so NO group
+  // game can swing the utility — nothing should be significant.
+  const weights = Object.fromEntries(prep.teams.map((t) => [t, 0.0]));
+  weights.Mexico = 1.0;
+  const g0 = prep.groupGames[0]; // Mexico vs South Africa, attended
+  const { rows, summary } = analyzeCheer(prep, noResults, store, weights, [g0.id]);
+  assert.ok(Math.abs(summary.baselineU - 1.0) < 1e-9, "Mexico always in lineup");
+  assert.ok(rows.every((r) => !r.significant), "deterministic lineup => no leverage");
+});
+
+test("analyzeCheer: known-participant unplayed knockout match gets a recommendation", () => {
+  // Pin all group games with simulated-but-fixed scores so the bracket is
+  // deterministic, mark M82's participants known but unplayed.
+  const rnd = makeRng(99);
+  const fixedScores = {};
+  for (const g of prep.groupGames) {
+    const [ga, gb] = simulateMatch(prep.ratings[g.a], prep.ratings[g.b], false, rnd);
+    fixedScores[g.id] = [ga, gb];
+  }
+  let fixed = prepareResults(prep, { group_results: fixedScores, knockout: {} });
+  const st0 = runSims(prep, fixed, 50, 1);
+  const i82 = 82 - 73;
+  const t1 = prep.teams[st0.koTeams[2 * i82]], t2 = prep.teams[st0.koTeams[2 * i82 + 1]];
+  fixed = prepareResults(prep, {
+    group_results: fixedScores,
+    knockout: { m82: { team1: t1, team2: t2 } },
+  });
+  const st = runSims(prep, fixed, 3000, 7);
+  const weights = Object.fromEntries(prep.teams.map((t) => [t, 0.0]));
+  weights[t1] = 1.0;
+  const { rows } = analyzeCheer(prep, fixed, st, weights, ["m94"]);
+  const r82 = rows.find((r) => r.id === "m82");
+  assert.ok(r82, "m82 should be scored once participants are known");
+  assert.equal(r82.kind, "ko");
+  const rec = r82.best === "A" ? r82.a : r82.b;
+  assert.equal(rec, t1, "you attend M94: root for your favorite to win M82");
+  assert.ok(r82.significant);
+});

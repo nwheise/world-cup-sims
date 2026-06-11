@@ -69,6 +69,15 @@ export const ROUND_SHORT = {
   "Semi-final": "SF", "Match for third place": "3rd place", "Final": "Final",
 };
 
+/** UTC ISO timestamp -> "Jun 11 at 4:04 PM" in the VIEWER's local timezone. */
+export function fmtTimestamp(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  const date = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${date} at ${time}`;
+}
+
 export function pct(p) {
   if (p >= 0.995) return "100%";
   if (p > 0 && p < 0.01) return "<1%";

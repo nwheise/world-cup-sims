@@ -4,8 +4,8 @@
  * and event delegation).
  */
 
-import { teamLabel, displayName, flag, kickoffParts, fmtKickoff, slotDesc,
-         ROUND_SHORT, pct, esc } from "./format.js";
+import { teamLabel, displayName, flag, kickoffParts, fmtKickoff, fmtTimestamp,
+         slotDesc, ROUND_SHORT, pct, esc } from "./format.js";
 
 const bar = (p, cls = "") =>
   `<span class="bar ${cls}"><span style="width:${Math.max(0, Math.min(100, p * 100))}%"></span></span>`;
@@ -136,10 +136,10 @@ export function renderCheer(S, el) {
           ${rec ? `Cheer for <strong>${teamLabel(rec)}</strong>` : "Root for a <strong>draw</strong>"}
           ${upset ? '<span class="chip upset">underdog!</span>' : ""}
         </div>
-        <div class="cheer-impact" title="How much this one result swings your expected lineup score">
+        <div class="cheer-impact" title="How much this one result swings your expected lineup quality">
           ${bar(r.impact / maxImpact, "impact")}<span class="muted">impact ${r.impact.toFixed(3)}</span>
         </div>
-        <p class="muted small">E[lineup] by outcome: ${means}</p>
+        <p class="muted small">Lineup quality by outcome: ${means}</p>
         ${loy}
         ${lineupTable}
       </article>`;
@@ -148,9 +148,15 @@ export function renderCheer(S, el) {
   el.innerHTML = `
     <div class="card summary">
       <p><strong>Your matches:</strong> ${esc(attendedLabels)}</p>
-      <p><strong>Top pick:</strong> ${teamLabel(summary.topTeam)} —
-        <strong>${pct(summary.pTopInLineup)}</strong> chance they play in front of you.
-        Expected lineup score ${summary.baselineU.toFixed(2)}.</p>
+      <p><strong>Your top picks</strong> — chance each plays in front of you:</p>
+      <ul class="top-picks">
+        ${(summary.topTeams || []).map(({ team, p }) => `
+          <li>${teamLabel(team)} <strong>${pct(p)}</strong>${bar(p)}</li>`).join("")}
+      </ul>
+      <p class="muted small">Recommendations below maximize your expected
+      <strong>lineup quality</strong>: how much you'll like the teams you end up
+      watching live, favorites counting extra (0 = none of your teams show up;
+      1.0 ≈ one absolute favorite on the pitch).</p>
       ${spread < 0.05 ? `<p class="warn">Your preferences are nearly flat — make more
         picks in <a href="#teams">My teams</a> for a sharper guide.</p>` : ""}
       <p class="muted small">${simStatusLine(S)}</p>
@@ -202,9 +208,8 @@ function simStatusLine(S) {
     const p = S.simStatus.total ? Math.round(100 * S.simStatus.done / S.simStatus.total) : 0;
     return `Simulating ${S.settings.nSims.toLocaleString()} tournaments… ${p}%`;
   }
-  return `${S.meta.nSims.toLocaleString()} simulated tournaments · ` +
-         `${S.playedCount} of 72 group games played` +
-         (S.results?.fetched_at ? ` · results updated ${S.results.fetched_at.slice(0, 10)}` : "");
+  return `${S.meta.nSims.toLocaleString()} simulated tournaments` +
+         (S.results?.fetched_at ? ` · results updated ${fmtTimestamp(S.results.fetched_at)}` : "");
 }
 
 // ---------------------------------------------------------------------------

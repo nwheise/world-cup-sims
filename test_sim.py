@@ -9,6 +9,8 @@ Pure stdlib (unittest), no dependencies. All randomized tests are seeded, so
 results are deterministic. Expects annex_c.txt in the working directory.
 """
 
+import json
+import os
 import random
 import unittest
 from itertools import combinations
@@ -386,6 +388,81 @@ class TestLoyaltyGuard(unittest.TestCase):
                                          liked_p={"Canada": p_seat["Canada"]})
         self.assertEqual(loy["kind"], "none")
         self.assertTrue(loy["suppressible"])
+
+
+class TestEspnResultsParser(unittest.TestCase):
+    """parse_espn (scripts/update_results.py): the live-results seam. Uses the
+    committed tournament.json so id/kickoff matching is tested for real."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "update_results", os.path.join("scripts", "update_results.py"))
+        cls.upd = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.upd)
+        with open(os.path.join("site", "data", "tournament.json")) as f:
+            cls.tournament = json.load(f)
+
+    @staticmethod
+    def event(date, home, away, hs=None, as_=None, completed=False,
+              winner=None):
+        def side(ha, team, score, win):
+            d = {"homeAway": ha, "team": {"displayName": team}}
+            if score is not None:
+                d["score"] = str(score)
+            if win is not None:
+                d["winner"] = win
+            return d
+        return {"date": date, "competitions": [{
+            "status": {"type": {"completed": completed}},
+            "competitors": [side("home", home, hs, winner == "home" if winner else None),
+                            side("away", away, as_, winner == "away" if winner else None)],
+        }]}
+
+    def test_group_game_with_name_mapping_and_flip(self):
+        # ESPN lists the pair reversed and uses "United States"/"Türkiye".
+        ev = self.event("2026-06-25T19:00Z", "Türkiye", "United States",
+                        1, 2, completed=True)
+        g, k = self.upd.parse_espn([ev], self.tournament, min_events=0)
+        (gid, score), = g.items()
+        # Whichever orientation tournament.json uses, the score must follow it:
+        # USA scored 2, Türkiye 1.
+        self.assertEqual(set(gid.split("|")), {"Turkiye", "USA"})
+        self.assertEqual(score[gid.split("|").index("USA")], 2)
+        self.assertEqual(score[gid.split("|").index("Turkiye")], 1)
+        self.assertEqual(k, {})
+
+    def test_incomplete_games_and_placeholders_are_skipped(self):
+        evs = [
+            self.event("2026-06-12T01:00Z", "South Korea", "Czechia"),  # live/sched
+            self.event("2026-07-01T20:00Z", "Group G Winner",
+                       "Third Place Group A/E/H/I/J"),                  # M82 TBD
+        ]
+        g, k = self.upd.parse_espn(evs, self.tournament, min_events=0)
+        self.assertEqual((g, k), ({}, {}))
+
+    def test_knockout_participants_then_winner_via_flag(self):
+        # M82 kickoff is 2026-07-01T13:00-07:00 == 20:00Z.
+        ev = self.event("2026-07-01T20:00Z", "Belgium", "Czechia")
+        g, k = self.upd.parse_espn([ev], self.tournament, min_events=0)
+        self.assertEqual(k, {"m82": {"team1": "Belgium", "team2": "Czechia"}})
+        # Completed on penalties: tied score, winner from ESPN's flag.
+        ev = self.event("2026-07-01T20:00Z", "Belgium", "Czechia",
+                        1, 1, completed=True, winner="away")
+        g, k = self.upd.parse_espn([ev], self.tournament, min_events=0)
+        self.assertEqual(k["m82"]["score"], [1, 1])
+        self.assertEqual(k["m82"]["winner"], "Czechia")
+
+    def test_unknown_team_in_completed_group_game_raises(self):
+        ev = self.event("2026-06-12T01:00Z", "Korea Republic", "Czechia",
+                        1, 0, completed=True)
+        with self.assertRaises(ValueError):
+            self.upd.parse_espn([ev], self.tournament, min_events=0)
+
+    def test_event_count_guard_raises(self):
+        with self.assertRaises(ValueError):
+            self.upd.parse_espn([], self.tournament)
 
 
 if __name__ == "__main__":

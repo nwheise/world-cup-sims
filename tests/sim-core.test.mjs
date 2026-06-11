@@ -343,6 +343,13 @@ test("analyzeCheer: USA fan attending Seattle wants USA to win its group games",
   assert.equal(summary.topTeam, "USA");
   assert.ok(summary.pTopInLineup > 0.15 && summary.pTopInLineup < 0.5,
     `P(USA in Seattle lineup) = ${summary.pTopInLineup} (Python: ~0.31)`);
+  // top-picks summary: USA first, up to 5 entries, probabilities in [0,1]
+  assert.equal(summary.topTeams[0].team, "USA");
+  assert.equal(summary.topTeams[0].p, summary.pTopInLineup);
+  assert.ok(summary.topTeams.length <= 5);
+  for (const { p, weight } of summary.topTeams) {
+    assert.ok(p >= 0 && p <= 1 && weight > 0);
+  }
   assert.equal(rows.length, 72, "all group games scored, none played yet");
   // USA's three group games should advise rooting for USA, and they should be
   // among the highest-impact games (USA must WIN group D to route to Seattle).

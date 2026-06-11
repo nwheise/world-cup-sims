@@ -26,7 +26,7 @@ start), zero group matches had been played** — the sim simulates all 72 group 
 | `annex_c.txt` | FIFA's official Annex C third-place allocation table — all 495 C(12,8) combinations. Transcribed from the published schedule (via Wikipedia's "2026 FIFA World Cup knockout stage" page, which reproduces the regulations). **Validated — do not regenerate or hand-edit without re-running the validator.** |
 | `site/` | **Static website** (GitHub Pages, no backend — see "The website" section below). `index.html` + `css/style.css` + `js/`: `sim-core.js` (JS port of the simulator, generalized to record ALL 32 knockout matches + group positions per sim in packed typed arrays; also hosts the cheer-guide analysis incl. loyalty guard), `worker.js` (Web Worker wrapper: simulate once, re-analyze instantly), `prefs.js` (Elo head-to-head port of rank_prefs), `format.js`/`views.js`/`app.js` (UI; user state in localStorage). Data: `site/data/tournament.json` (static facts) + `site/data/results.json` (live scores). |
 | `scripts/build_data.py` | Generates `site/data/tournament.json` from the sim's GROUPS/RATINGS + `annex_c.txt` + the openfootball schedule, with assertions cross-checking the verified third-place slot table. Committed output is static; re-run only if FIFA reschedules or ratings are refreshed. |
-| `scripts/update_results.py` | Fetches live results from openfootball → `site/data/results.json`, normalized to sim team names (Turkey→Turkiye, Cape Verde→Cabo Verde, Czech Republic→Czechia, Curaçao→Curacao, Ivory Coast→Cote d'Ivoire, Bosnia & Herzegovina→Bosnia-Herzegovina). Knockout winners honor pens > ET > FT. Idempotent (no write when nothing changed); no-op after Aug 1, 2026. |
+| `scripts/update_results.py` | Fetches live results → `site/data/results.json`. **Primary: ESPN's public scoreboard API** (keyless, near-live; one call covers all 104 events; knockout events matched by unique UTC kickoff; winner from ESPN's per-competitor flag so ET/pens are handled). **Fallback: openfootball** (volunteer-updated; in 2022 its JSON got scores backfilled years later — that's why ESPN is primary). Name maps for both sources normalize to sim team names (ESPN: United States→USA, Türkiye→Turkiye, Congo DR→DR Congo, Cape Verde→Cabo Verde, Curaçao→Curacao, Ivory Coast→Cote d'Ivoire). Idempotent (no write when nothing changed); no-op after Aug 1, 2026. `parse_espn()` is pure and unit-tested. |
 | `.github/workflows/site.yml` | One workflow: push to main → JS tests + Pages deploy; 2-hour cron / manual dispatch → refresh results.json, commit if changed, then test + deploy. Single workflow on purpose: GITHUB_TOKEN pushes don't trigger other workflows. One-time repo setup: Settings → Pages → Source "GitHub Actions". |
 | `tests/sim-core.test.mjs` | **JS test suite** (`node --test "tests/**/*.test.mjs"`, no npm deps, node ≥ 20). Mirrors the Python suite's invariants AND cross-validates the JS port against the Python sim's published findings (Belgium ~58% M82, USA ~31% M94, Germany-third ~dead at <2%). Also covers: real results pinning sim outcomes, known-knockout-winner honoring, per-slot appearance probs summing to 1, the JS loyalty guard, and cheer analysis end-to-end (incl. known-participant knockout recommendations). |
 | `validate_annex_c.py` | Structural validator for `annex_c.txt`. Exposes `validate(path) -> [errors]` (empty == valid) and runs standalone (`python3 validate_annex_c.py`). Checks: rows 1–495 present, every 8-of-12 combination appears exactly once, each row's 8 assignments are a permutation of its 8 qualified groups, every assignment respects the per-slot allowed-group sets. |
@@ -174,9 +174,13 @@ moving part is a scheduled GitHub Action.
   known. The preference pool auto-narrows to teams that can still reach the user's attended
   matches (it reproduces the 36-team `FEEDER_GROUPS` set when you select M82+M94 — emergent
   from the sim, not hardcoded).
-- **Data source**: openfootball/worldcup.json (public domain, raw.githubusercontent.com, no
-  key). Score schema: `score.ft`/`score.et`/`score.p` — winner = p over et over ft. Team-name
-  mapping lives in `scripts/update_results.py` (and `build_data.py`).
+- **Data source**: ESPN public scoreboard API
+  (`site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719`,
+  keyless) — verified near-live on opening night, when openfootball still had nothing 2h after
+  full time. openfootball/worldcup.json remains the automatic fallback (its score schema:
+  `score.ft`/`.et`/`.p`, winner = p > et > ft). Team-name maps for both live in
+  `scripts/update_results.py`; the schedule in `build_data.py` still comes from openfootball
+  (static, fetched once).
 - **Four tabs**: Cheer guide (recommendations sorted by date by default, impact sort optional;
   loyalty notes + noise-floor collapse + per-liked-team "how this moves your teams" tables),
   My matches (checkbox schedule, venue filter), My teams (head-to-head duels + ranking + 📌

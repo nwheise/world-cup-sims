@@ -456,9 +456,12 @@ export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}
 
   const mark = new Int32Array(nt).fill(-1);
   let totalU = 0, totalU2 = 0;
-  let topIdx = -1, topW = -Infinity;
-  for (let t = 0; t < nt; t++) if (ew[t] > topW) { topW = ew[t]; topIdx = t; }
-  let topIn = 0;
+  // Track P(in lineup) for the user's top 5 teams by weight (summary display).
+  const topIdxs = [...Array(nt).keys()]
+    .filter((t) => (weights[prep.teams[t]] ?? 0) > 0)
+    .sort((x, y) => (weights[prep.teams[y]] ?? 0) - (weights[prep.teams[x]] ?? 0))
+    .slice(0, 5);
+  const topIn = new Float64Array(topIdxs.length);
 
   for (let s = 0; s < n; s++) {
     // Lineup = distinct teams across attended matches this sim.
@@ -472,7 +475,7 @@ export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}
       }
     }
     totalU += u; totalU2 += u * u;
-    if (mark[topIdx] === s) topIn += 1;
+    for (let i = 0; i < topIdxs.length; i++) if (mark[topIdxs[i]] === s) topIn[i] += 1;
 
     for (let r = 0; r < groupRows.length; r++) {
       const g = groupRows[r];
@@ -550,13 +553,19 @@ export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}
   });
   rows.sort((x, y) => y.impact - x.impact);
 
+  const topTeams = topIdxs.map((t, i) => ({
+    team: prep.teams[t],
+    weight: weights[prep.teams[t]] ?? 0,
+    p: topIn[i] / n,
+  }));
   return {
     rows,
     summary: {
       nSims: n,
       baselineU: totalU / n,
-      topTeam: prep.teams[topIdx],
-      pTopInLineup: topIn / n,
+      topTeams,
+      topTeam: topTeams[0]?.team ?? null,
+      pTopInLineup: topTeams[0]?.p ?? 0,
     },
   };
 }

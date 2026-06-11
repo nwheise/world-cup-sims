@@ -173,9 +173,10 @@ moving part is a scheduled GitHub Action.
 - **Data source**: openfootball/worldcup.json (public domain, raw.githubusercontent.com, no
   key). Score schema: `score.ft`/`score.et`/`score.p` — winner = p over et over ft. Team-name
   mapping lives in `scripts/update_results.py` (and `build_data.py`).
-- **Four tabs**: Cheer guide (impact-ranked recommendations + loyalty notes + noise-floor
-  collapse), My matches (checkbox schedule, venue filter), My teams (head-to-head duels +
-  ranking), Probabilities (per-slot knockout odds, group standings + advancement, champion).
+- **Four tabs**: Cheer guide (recommendations sorted by date by default, impact sort optional;
+  loyalty notes + noise-floor collapse), My matches (checkbox schedule, venue filter), My teams
+  (head-to-head duels + ranking), Probabilities (attended matches pinned on top, per-slot
+  knockout odds, group standings + advancement, champion).
 - The browser smoke test was driven via headless Chrome + CDP; rendered numbers matched the
   Python findings. After JS changes run `node --test "tests/**/*.test.mjs"`.
 

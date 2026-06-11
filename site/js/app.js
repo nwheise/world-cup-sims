@@ -35,7 +35,7 @@ const S = {
   attended: new Set(load(LS.attended, [])),
   settings: { nSims: 20000, ...load(LS.settings, {}) },
   pool: [], weights: {}, counts: new Map(), currentPair: null,
-  cheerSort: "impact", venueFilter: "",
+  cheerSort: "date", venueFilter: "",
   lastReqId: 0,
 };
 

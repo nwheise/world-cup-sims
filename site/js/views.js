@@ -111,10 +111,10 @@ export function renderCheer(S, el) {
       <p class="muted small">${simStatusLine(S)}</p>
     </div>
     <div class="cheer-controls">
-      <h2>Games that matter most</h2>
+      <h2>Who to cheer for, game by game</h2>
       <span class="seg">
-        <button class="btn small ${S.cheerSort !== "date" ? "active" : ""}" data-cheer-sort="impact">by impact</button>
         <button class="btn small ${S.cheerSort === "date" ? "active" : ""}" data-cheer-sort="date">by date</button>
+        <button class="btn small ${S.cheerSort !== "date" ? "active" : ""}" data-cheer-sort="impact">by impact</button>
       </span>
     </div>
     ${sorted.length ? sorted.map(rowHtml).join("") : `

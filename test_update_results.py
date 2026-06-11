@@ -1,0 +1,126 @@
+"""
+Tests for the live-results pipeline (scripts/update_results.py) — the one
+piece of the site that talks to the outside world. Pure-stdlib unittest.
+
+Run from the repo root:  python3 -m unittest test_update_results -v
+"""
+
+import importlib.util
+import json
+import os
+import unittest
+
+
+def _load_module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class TestEspnResultsParser(unittest.TestCase):
+    """parse_espn: the live-results seam. Uses the committed tournament.json
+    so id/kickoff matching is tested for real."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.upd = _load_module(
+            "update_results", os.path.join("scripts", "update_results.py"))
+        with open(os.path.join("site", "data", "tournament.json")) as f:
+            cls.tournament = json.load(f)
+
+    @staticmethod
+    def event(date, home, away, hs=None, as_=None, completed=False,
+              winner=None):
+        def side(ha, team, score, win):
+            d = {"homeAway": ha, "team": {"displayName": team}}
+            if score is not None:
+                d["score"] = str(score)
+            if win is not None:
+                d["winner"] = win
+            return d
+        return {"date": date, "competitions": [{
+            "status": {"type": {"completed": completed}},
+            "competitors": [side("home", home, hs, winner == "home" if winner else None),
+                            side("away", away, as_, winner == "away" if winner else None)],
+        }]}
+
+    def test_group_game_with_name_mapping_and_flip(self):
+        # ESPN lists the pair reversed and uses "United States"/"Türkiye".
+        ev = self.event("2026-06-25T19:00Z", "Türkiye", "United States",
+                        1, 2, completed=True)
+        g, k = self.upd.parse_espn([ev], self.tournament, min_events=0)
+        (gid, score), = g.items()
+        # Whichever orientation tournament.json uses, the score must follow it:
+        # USA scored 2, Türkiye 1.
+        self.assertEqual(set(gid.split("|")), {"Turkiye", "USA"})
+        self.assertEqual(score[gid.split("|").index("USA")], 2)
+        self.assertEqual(score[gid.split("|").index("Turkiye")], 1)
+        self.assertEqual(k, {})
+
+    def test_incomplete_games_and_placeholders_are_skipped(self):
+        evs = [
+            self.event("2026-06-12T01:00Z", "South Korea", "Czechia"),  # live/sched
+            self.event("2026-07-01T20:00Z", "Group G Winner",
+                       "Third Place Group A/E/H/I/J"),                  # M82 TBD
+        ]
+        g, k = self.upd.parse_espn(evs, self.tournament, min_events=0)
+        self.assertEqual((g, k), ({}, {}))
+
+    def test_knockout_participants_then_winner_via_flag(self):
+        # M82 kickoff is 2026-07-01T13:00-07:00 == 20:00Z.
+        ev = self.event("2026-07-01T20:00Z", "Belgium", "Czechia")
+        g, k = self.upd.parse_espn([ev], self.tournament, min_events=0)
+        self.assertEqual(k, {"m82": {"team1": "Belgium", "team2": "Czechia"}})
+        # Completed on penalties: tied score, winner from ESPN's flag.
+        ev = self.event("2026-07-01T20:00Z", "Belgium", "Czechia",
+                        1, 1, completed=True, winner="away")
+        g, k = self.upd.parse_espn([ev], self.tournament, min_events=0)
+        self.assertEqual(k["m82"]["score"], [1, 1])
+        self.assertEqual(k["m82"]["winner"], "Czechia")
+
+    def test_unknown_team_in_completed_group_game_raises(self):
+        ev = self.event("2026-06-12T01:00Z", "Korea Republic", "Czechia",
+                        1, 0, completed=True)
+        with self.assertRaises(ValueError):
+            self.upd.parse_espn([ev], self.tournament, min_events=0)
+
+    def test_event_count_guard_raises(self):
+        with self.assertRaises(ValueError):
+            self.upd.parse_espn([], self.tournament)
+
+
+class TestBuildData(unittest.TestCase):
+    """build_data.py's embedded data integrity + Annex C validation."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.bd = _load_module("build_data", os.path.join("scripts", "build_data.py"))
+
+    def test_groups_and_ratings(self):
+        teams = [t for g in self.bd.GROUPS.values() for t in g]
+        self.assertEqual(len(teams), 48)
+        self.assertEqual(len(set(teams)), 48)
+        self.assertEqual(set(teams), set(self.bd.RATINGS))
+        # ratings unique: they double as the deterministic ranking tiebreaker
+        self.assertEqual(len(set(self.bd.RATINGS.values())), 48)
+
+    def test_annex_c_loads_and_validates(self):
+        rows = self.bd.load_annex_c()   # raises on any structural violation
+        self.assertEqual(len(rows), 495)
+        # spot-check: when A/E/H/I/J-heavy combos qualify, M82 gets a legal group
+        for r in rows:
+            self.assertIn(r["assign"]["82"], set("AEHIJ"))
+
+    def test_committed_tournament_json_matches_embedded_data(self):
+        with open(os.path.join("site", "data", "tournament.json")) as f:
+            t = json.load(f)
+        self.assertEqual(t["groups"], self.bd.GROUPS)
+        self.assertEqual(t["ratings"], self.bd.RATINGS)
+        self.assertEqual(len(t["annex_c"]), 495)
+        self.assertEqual(len(t["group_games"]), 72)
+        self.assertEqual([m["num"] for m in t["knockout"]], list(range(73, 105)))
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

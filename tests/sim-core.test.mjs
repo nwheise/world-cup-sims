@@ -1,11 +1,11 @@
 /*
- * Node test suite for the website's JS simulator (site/js/sim-core.js) and
- * preference module (site/js/prefs.js). Mirrors the invariants of the Python
- * test_sim.py and — crucially — cross-validates the port against the Python
- * sim's published findings (CLAUDE.md "Key findings"): Belgium ~58% to appear
- * in Match 82, USA ~31% in Match 94, etc.
+ * Node test suite for the site's simulator (site/js/sim-core.js) and
+ * preference module (site/js/prefs.js). Crucially, it cross-validates the
+ * engine against the original Python simulator's published findings
+ * (CLAUDE.md "Key findings"): Belgium ~58% to appear in Match 82, USA ~31%
+ * in Match 94, etc. — those anchors survive the Python code's removal.
  *
- * Run from the repo root:  node --test tests/
+ * Run from the repo root:  node --test "tests/**"
  */
 
 import { test } from "node:test";

@@ -56,8 +56,10 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run simulator tests
-        run: node --test "tests/**/*.test.mjs"
+      - name: Run tests (JS simulator + Python data pipeline)
+        run: |
+          node --test "tests/**/*.test.mjs"
+          python3 -m unittest test_update_results
 
       - uses: actions/configure-pages@v5
 

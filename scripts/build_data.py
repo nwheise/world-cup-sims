@@ -3,8 +3,10 @@ build_data.py — generate site/data/tournament.json (the static tournament fact
 the website's in-browser simulator consumes).
 
 Sources:
-  * GROUPS / RATINGS from seattle_wc_sim.py (the validated sim data)
-  * annex_c.txt (FIFA's official 495-row third-place allocation table)
+  * GROUPS / RATINGS below (verified June 11, 2026 — see CLAUDE.md "Verified
+    tournament facts" and "Model details")
+  * annex_c.txt (FIFA's official 495-row third-place allocation table,
+    fully re-validated on every run of this script)
   * openfootball worldcup.json for the 104-match schedule (dates, kickoff
     times, venues, knockout slot codes like "1A" / "2B" / "3A/E/H/I/J" /
     "W81" / "L101")
@@ -20,16 +22,74 @@ Run from the repo root:  python3 scripts/build_data.py
 import json
 import os
 import re
-import sys
 import urllib.request
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from seattle_wc_sim import GROUPS, RATINGS, SLOT_TO_MATCH  # noqa: E402
+from itertools import combinations
 
 SCHEDULE_URL = "https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json"
 OUT_PATH = os.path.join("site", "data", "tournament.json")
 
-# openfootball team spellings -> the names used by the simulator / RATINGS.
+# ---------------------------------------------------------------------------
+# Tournament data (Dec 2025 draw + March 2026 playoff results — verified).
+# Ratings: FIFA points (Apr 1, 2026 release) where published; the rest are
+# estimates. Fractional offsets keep every rating unique, because ratings also
+# serve as the deterministic FIFA-World-Ranking tiebreaker in the simulator.
+# ---------------------------------------------------------------------------
+
+GROUPS = {
+    "A": ["Mexico", "South Africa", "South Korea", "Czechia"],
+    "B": ["Canada", "Bosnia-Herzegovina", "Qatar", "Switzerland"],
+    "C": ["Brazil", "Morocco", "Haiti", "Scotland"],
+    "D": ["USA", "Paraguay", "Australia", "Turkiye"],
+    "E": ["Germany", "Curacao", "Cote d'Ivoire", "Ecuador"],
+    "F": ["Netherlands", "Japan", "Sweden", "Tunisia"],
+    "G": ["Belgium", "Egypt", "Iran", "New Zealand"],
+    "H": ["Spain", "Cabo Verde", "Saudi Arabia", "Uruguay"],
+    "I": ["France", "Senegal", "Iraq", "Norway"],
+    "J": ["Argentina", "Algeria", "Austria", "Jordan"],
+    "K": ["Portugal", "DR Congo", "Uzbekistan", "Colombia"],
+    "L": ["England", "Croatia", "Ghana", "Panama"],
+}
+
+RATINGS = {
+    # Published FIFA points, Apr 2026
+    "France": 1877, "Spain": 1876, "Argentina": 1875, "England": 1826,
+    "Portugal": 1764, "Brazil": 1761, "Netherlands": 1758, "Morocco": 1756,
+    "Belgium": 1735, "Germany": 1730, "Croatia": 1717, "Colombia": 1693,
+    "Senegal": 1689, "Mexico": 1681, "USA": 1673, "Uruguay": 1673.07,
+    "Japan": 1660, "Switzerland": 1649, "Canada": 1610,
+    # (est.) — approximations, edit as desired
+    "Iran": 1615, "Ecuador": 1595, "South Korea": 1590, "Austria": 1585,
+    "Australia": 1575, "Norway": 1565, "Sweden": 1560, "Turkiye": 1555,
+    "Egypt": 1525, "Algeria": 1520, "Czechia": 1500, "Tunisia": 1495,
+    "Paraguay": 1490, "Scotland": 1485, "Cote d'Ivoire": 1480,
+    "Bosnia-Herzegovina": 1480.5, "Panama": 1470, "Uzbekistan": 1450,
+    "South Africa": 1450.5, "Qatar": 1445, "Saudi Arabia": 1420,
+    "Iraq": 1415, "Jordan": 1405, "DR Congo": 1400, "Ghana": 1400.5,
+    "Cabo Verde": 1370, "Curacao": 1310, "Haiti": 1300, "New Zealand": 1300.5,
+}
+
+# Annex C column order: assignments for slots 1A;1B;1D;1E;1G;1I;1K;1L =
+# these match numbers. M82 = Seattle R32; M81 feeds M94 (Seattle R16) with M82.
+SLOT_NAMES = ["1A", "1B", "1D", "1E", "1G", "1I", "1K", "1L"]
+SLOT_TO_MATCH = {"1A": 79, "1B": 85, "1D": 81, "1E": 74,
+                 "1G": 82, "1I": 77, "1K": 87, "1L": 80}
+# Official per-slot allowed third-place groups (the R32 never rematches
+# group-stage opponents) — every annex row is checked against this.
+ALLOWED = {
+    "1A": set("CEFHI"), "1B": set("EFGIJ"), "1D": set("BEFIJ"),
+    "1E": set("ABCDF"), "1G": set("AEHIJ"), "1I": set("CDFGH"),
+    "1K": set("DEIJL"), "1L": set("EHIJK"),
+}
+
+# Verified third-place R32 slots (CLAUDE.md, sourced June 11 2026), used as a
+# cross-check on the fetched schedule.
+EXPECTED_THIRD_SLOTS = {
+    74: ("1E", "3A/B/C/D/F"), 77: ("1I", "3C/D/F/G/H"), 79: ("1A", "3C/E/F/H/I"),
+    80: ("1L", "3E/H/I/J/K"), 81: ("1D", "3B/E/F/I/J"), 82: ("1G", "3A/E/H/I/J"),
+    85: ("1B", "3E/F/G/I/J"), 87: ("1K", "3D/E/I/J/L"),
+}
+
+# openfootball team spellings -> the names used above.
 NAME_MAP = {
     "Bosnia & Herzegovina": "Bosnia-Herzegovina",
     "Cape Verde": "Cabo Verde",
@@ -37,14 +97,6 @@ NAME_MAP = {
     "Curaçao": "Curacao",
     "Ivory Coast": "Cote d'Ivoire",
     "Turkey": "Turkiye",
-}
-
-# Verified facts (CLAUDE.md, sourced June 11 2026) used as cross-checks on the
-# fetched schedule: third-place R32 slots and the Seattle pipeline.
-EXPECTED_THIRD_SLOTS = {
-    74: ("1E", "3A/B/C/D/F"), 77: ("1I", "3C/D/F/G/H"), 79: ("1A", "3C/E/F/H/I"),
-    80: ("1L", "3E/H/I/J/K"), 81: ("1D", "3B/E/F/I/J"), 82: ("1G", "3A/E/H/I/J"),
-    85: ("1B", "3E/F/G/I/J"), 87: ("1K", "3D/E/I/J/L"),
 }
 
 
@@ -67,19 +119,35 @@ def to_iso(date, time):
 
 
 def load_annex_c(path="annex_c.txt"):
-    rows = []
-    slot_names = ["1A", "1B", "1D", "1E", "1G", "1I", "1K", "1L"]
+    """Load AND fully validate FIFA's official 495-combination table:
+    rows 1..495, every C(12,8) combination exactly once, each row's
+    assignments a permutation of its qualified groups, every assignment
+    slot-legal. (Absorbed from the former validate_annex_c.py.)"""
+    rows, by_num = [], {}
     with open(path) as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            parts = [p.strip() for p in re.match(r"\d+:\s*(.*)", line).group(1).split(";")]
-            key = "".join(sorted(parts[:8]))
-            assign = {str(SLOT_TO_MATCH[slot_names[i]]): parts[8 + i].lstrip("3")
-                      for i in range(8)}
-            rows.append({"key": key, "assign": assign})
-    assert len(rows) == 495, f"expected 495 Annex C rows, got {len(rows)}"
+            m = re.match(r"(\d+):\s*(.*)", line)
+            num = int(m.group(1))
+            parts = [p.strip() for p in m.group(2).split(";")]
+            assert len(parts) == 16, f"row {num}: {len(parts)} fields"
+            groups = frozenset(parts[:8])
+            slot_assign = {SLOT_NAMES[i]: parts[8 + i].lstrip("3") for i in range(8)}
+            assert len(groups) == 8, f"row {num}: groups not 8 distinct"
+            assert frozenset(slot_assign.values()) == groups, \
+                f"row {num}: assignments are not a permutation of the groups"
+            for slot, g in slot_assign.items():
+                assert g in ALLOWED[slot], f"row {num}: slot {slot} assigned 3{g}"
+            by_num[num] = groups
+            rows.append({
+                "key": "".join(sorted(parts[:8])),
+                "assign": {str(SLOT_TO_MATCH[s]): g for s, g in slot_assign.items()},
+            })
+    assert sorted(by_num) == list(range(1, 496)), "expected rows 1..495"
+    combos = {frozenset(c) for c in combinations("ABCDEFGHIJKL", 8)}
+    assert set(by_num.values()) == combos, "not every 8-of-12 combination present once"
     assert len({r["key"] for r in rows}) == 495
     return rows
 

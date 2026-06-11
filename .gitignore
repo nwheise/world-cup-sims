@@ -8,5 +8,3 @@ venv/
 preferences.json
 preferences.json.tmp
 
-# Saved simulation output dumps
-output.txt

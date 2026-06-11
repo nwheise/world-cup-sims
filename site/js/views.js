@@ -304,6 +304,32 @@ export function renderProbs(S, el) {
       </article>`;
   };
 
+  // Attended matches get a pinned section up top — no scrolling to find them.
+  const attendedKo = S.ko.filter((m) => S.attended.has(m.id));
+  const attendedGroup = [...S.attended]
+    .map((id) => S.groupById.get(id)).filter(Boolean)
+    .sort((a, b) => a.kickoff.localeCompare(b.kickoff));
+  const groupGameCard = (g) => {
+    const res = S.results?.group_results?.[g.id];
+    return `
+      <article class="card ko-card attending">
+        <header>
+          <span class="chip">Group ${esc(g.group)}</span> ${esc(g.ground)}
+          <span class="muted">${fmtKickoff(g.kickoff)}</span>
+          <span class="chip attend">attending</span>
+        </header>
+        <p>${teamLabel(g.a)} <em class="muted">vs</em> ${teamLabel(g.b)}
+          ${res ? `<span class="score">${res[0]}–${res[1]}</span>` : ""}</p>
+        <p class="muted small">Group game — you already know who you'll see.</p>
+      </article>`;
+  };
+  const yourSection = (attendedKo.length || attendedGroup.length) ? `
+    <h2>⭐ Your matches</h2>
+    <div class="grid">
+      ${attendedGroup.map(groupGameCard).join("")}
+      ${attendedKo.map((m) => koCard(m, m.num - 73)).join("")}
+    </div>` : "";
+
   const rounds = ["Round of 32", "Round of 16", "Quarter-final", "Semi-final",
                   "Match for third place", "Final"];
   const koSections = rounds.map((round) => {
@@ -344,6 +370,7 @@ export function renderProbs(S, el) {
         </label>
       </div>
     </div>
+    ${yourSection}
     <h2>Champion odds</h2>
     <div class="card">
       <ul class="champ">

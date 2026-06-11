@@ -101,8 +101,10 @@ fact and only the remaining ones are simulated.
 ### One-time setup after merging
 
 1. Repo **Settings → Pages → Source: GitHub Actions**.
-2. Push to `main` (or run the `site` workflow manually). The site appears at
-   `https://<user>.github.io/<repo>/`.
+2. Push to `main` (or run the `site` workflow manually).
+
+**Live at [worldcupcheerguide.com](https://worldcupcheerguide.com)** (custom domain set in
+Pages settings; apex A records → GitHub Pages IPs, `www` CNAME → `nwheise.github.io`).
 
 ### Local development
 

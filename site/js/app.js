@@ -16,6 +16,7 @@ import { renderCheer, renderMatches, renderTeams, renderProbs } from "./views.js
 const LS = {
   comparisons: "wc26:comparisons",
   attended: "wc26:attended",
+  pinned: "wc26:pinned",
   settings: "wc26:settings",
 };
 const load = (k, fallback) => {
@@ -33,9 +34,11 @@ const S = {
   analysis: null,
   comparisons: load(LS.comparisons, []),
   attended: new Set(load(LS.attended, [])),
+  pinned: new Set(load(LS.pinned, [])),
   settings: { nSims: 20000, ...load(LS.settings, {}) },
   pool: [], weights: {}, counts: new Map(), currentPair: null,
   cheerSort: "date", venueFilter: "",
+  matchupSel: {}, expandedSlots: new Set(),  // transient probe state (probs tab)
   lastReqId: 0,
 };
 
@@ -88,6 +91,9 @@ function computePrefs() {
   const scores = computeScores(S.pool, S.comparisons);
   S.counts = computeCounts(S.pool, S.comparisons);
   S.weights = computeWeights(scores);
+  // Pinned favorites are hard-set to the maximum weight, overriding the
+  // head-to-head ranking entirely.
+  for (const t of S.pinned) if (t in S.weights) S.weights[t] = 1.0;
   if (!S.currentPair || !S.currentPair.every((t) => S.pool.includes(t))) {
     S.currentPair = pickPair(S.pool, scores, S.counts, S.currentPair);
   }
@@ -188,7 +194,7 @@ function onAttendedChanged() {
 
 function wireEvents() {
   document.addEventListener("click", (ev) => {
-    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort]");
+    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-expand-slot]");
     if (!t) return;
     if (t.dataset.tab) setTab(t.dataset.tab);
     else if (t.dataset.goto) setTab(t.dataset.goto);
@@ -222,6 +228,21 @@ function wireEvents() {
     } else if (t.dataset.cheerSort) {
       S.cheerSort = t.dataset.cheerSort;
       renderCheer(S, sections.guide);
+    } else if (t.dataset.pin) {
+      if (S.pinned.has(t.dataset.pin)) S.pinned.delete(t.dataset.pin);
+      else S.pinned.add(t.dataset.pin);
+      save(LS.pinned, [...S.pinned]);
+      computePrefs();
+      renderTeams(S, sections.teams);
+      scheduleAnalyze();
+    } else if (t.dataset.selTeam) {
+      const { mid, slot, selTeam } = t.dataset;
+      const sel = (S.matchupSel[mid] ||= {});
+      sel[slot] = sel[slot] === selTeam ? undefined : selTeam;
+      renderProbs(S, sections.probs);
+    } else if (t.dataset.expandSlot !== undefined) {
+      S.expandedSlots.add(`${t.dataset.mid}:${t.dataset.slot}`);
+      renderProbs(S, sections.probs);
     }
   });
 

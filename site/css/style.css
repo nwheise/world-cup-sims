@@ -141,7 +141,14 @@ select {
 .ranking li::before { content: counter(rk) "."; color: var(--muted); width: 26px; text-align: right; }
 .ranking li:nth-child(odd) { background: rgba(255, 255, 255, 0.025); }
 .ranking li.unrated { opacity: 0.55; }
+.ranking li.pinned { background: rgba(74, 222, 128, 0.08); }
 .ranking .rk-team { flex: 0 0 220px; }
+.pin {
+  background: none; border: none; cursor: pointer; font-size: 0.95rem;
+  filter: grayscale(1); opacity: 0.35; padding: 0 2px;
+}
+.pin:hover { opacity: 0.8; }
+.pin.on { filter: none; opacity: 1; }
 
 /* --- probabilities --- */
 .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
@@ -157,7 +164,15 @@ select {
 .champ .bar { width: 140px; }
 .champ li { max-width: 460px; }
 .ko-card li.locked { color: var(--accent); font-weight: 600; }
+.ko-card li.selectable { cursor: pointer; border-radius: 5px; padding: 1px 4px; margin: 0 -4px; }
+.ko-card li.selectable:hover { background: var(--panel-2); }
+.ko-card li.sel { background: var(--panel-2); outline: 1px solid var(--accent-2); }
+.ko-card li.more { cursor: pointer; }
+.ko-card li.more:hover { color: var(--accent-2); }
 .ko-card .result { margin: 0 0 8px; }
+.ko-card .matchups { margin-top: 10px; border-top: 1px solid var(--panel-2); padding-top: 8px; }
+.ko-card .matchups li em { color: var(--muted); font-style: normal; }
+.sel-line { margin: 8px 0 0; font-size: 0.9rem; }
 .group-card table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .group-card th { color: var(--muted); font-weight: 500; text-align: right; padding: 2px 4px; }
 .group-card td { padding: 2px 4px; text-align: right; font-variant-numeric: tabular-nums; }

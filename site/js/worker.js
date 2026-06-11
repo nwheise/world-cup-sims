@@ -33,9 +33,10 @@ self.onmessage = (ev) => {
       type: "simulated",
       probs: {
         // serialize with team names
-        matches: probs.matches.map(({ slot1, slot2 }) => ({
+        matches: probs.matches.map(({ slot1, slot2, matchups }) => ({
           slot1: slot1.map(([t, p]) => [prep.teams[t], p]),
           slot2: slot2.map(([t, p]) => [prep.teams[t], p]),
+          matchups: matchups.map(([t1, t2, p]) => [prep.teams[t1], prep.teams[t2], p]),
         })),
         champion: probs.champion.map(([t, p]) => [prep.teams[t], p]),
       },

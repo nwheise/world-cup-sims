@@ -278,8 +278,9 @@ export function renderTeams(S, el) {
     : `Ranking all <strong>${S.pool.length}</strong> teams — select your matches to narrow the pool.`;
 
   const ranking = S.pool
-    .map((t) => ({ t, w: S.weights[t] ?? 0.5, c: S.counts.get(t) ?? 0 }))
-    .sort((x, y) => y.w - x.w);
+    .map((t) => ({ t, w: S.weights[t] ?? 0.5, c: S.counts.get(t) ?? 0,
+                   pinned: S.pinned.has(t) }))
+    .sort((x, y) => (y.pinned - x.pinned) || (y.w - x.w));
 
   el.innerHTML = `
     <div class="card">
@@ -303,12 +304,16 @@ export function renderTeams(S, el) {
       </div>
     </div>
     <h2>Your ranking <span class="muted small">(most → least want to see)</span></h2>
+    <p class="muted small">📌 Pin a team to hard-set it as an absolute favorite
+    (weight 1.00, ahead of the head-to-head ranking).</p>
     <ol class="ranking">
-      ${ranking.map(({ t, w, c }) => `
-        <li class="${c === 0 ? "unrated" : ""}">
+      ${ranking.map(({ t, w, c, pinned }) => `
+        <li class="${c === 0 && !pinned ? "unrated" : ""} ${pinned ? "pinned" : ""}">
+          <button class="pin ${pinned ? "on" : ""}" data-pin="${esc(t)}"
+            title="${pinned ? "Unpin" : "Pin as absolute favorite (weight 1.00)"}">📌</button>
           <span class="rk-team">${teamLabel(t)}</span>
           ${bar(w)}
-          <span class="muted small">${w.toFixed(2)}${c < 2 ? " · few picks" : ""}</span>
+          <span class="muted small">${w.toFixed(2)}${pinned ? " · pinned" : c < 2 ? " · few picks" : ""}</span>
         </li>`).join("")}
     </ol>`;
 }
@@ -323,13 +328,16 @@ export function renderProbs(S, el) {
     return;
   }
 
-  const slotList = (entries, known) => {
+  const slotList = (entries, known, mid, slot, selected) => {
     if (known) return `<li class="locked">${teamLabel(known)} <strong>✓</strong></li>`;
-    const top = entries.slice(0, 4);
+    const expanded = S.expandedSlots.has(`${mid}:${slot}`);
+    const top = expanded ? entries : entries.slice(0, 4);
     const rest = entries.length - top.length;
     return top.map(([t, p]) =>
-      `<li>${teamLabel(t)} <span class="p">${pct(p)}</span>${bar(p)}</li>`).join("") +
-      (rest > 0 ? `<li class="muted small">+ ${rest} more</li>` : "");
+      `<li class="selectable ${t === selected ? "sel" : ""}" data-sel-team="${esc(t)}"
+           data-mid="${esc(mid)}" data-slot="${slot}" title="Click to ask: how likely is this exact matchup?">
+        ${teamLabel(t)} <span class="p">${pct(p)}</span>${bar(p)}</li>`).join("") +
+      (rest > 0 ? `<li class="muted small more" data-expand-slot data-mid="${esc(mid)}" data-slot="${slot}">+ ${rest} more…</li>` : "");
   };
 
   const koCard = (m, i) => {
@@ -339,6 +347,31 @@ export function renderProbs(S, el) {
       ? `<p class="result">Final: <strong>${teamLabel(played.team1)} ${played.score[0]}–${played.score[1]} ${teamLabel(played.team2)}</strong></p>`
       : "";
     const probs = S.probs.matches[i];
+    const locked = known?.[0] && known?.[1];
+    // Top matchups (joint odds) — skip once the real pairing is locked in.
+    const matchups = !locked && probs.matchups?.length > 1 ? `
+      <div class="matchups">
+        <h4>Most likely matchups</h4>
+        <ul>${probs.matchups.slice(0, 3).map(([t1, t2, p]) =>
+          `<li>${teamLabel(t1)} <em>vs</em> ${teamLabel(t2)} <span class="p">${pct(p)}</span></li>`).join("")}
+        </ul>
+      </div>` : "";
+    // "What about X vs Y?" — a locked side counts as selected automatically.
+    const sel = S.matchupSel[m.id] || {};
+    const selA = known?.[0] ?? sel[1], selB = known?.[1] ?? sel[2];
+    let selLine = "";
+    if (!locked && (selA || selB)) {
+      if (selA && selB) {
+        const hit = probs.matchups.find(([t1, t2]) => t1 === selA && t2 === selB);
+        const p = hit ? hit[2] : 0;
+        selLine = `<p class="sel-line">P(<strong>${teamLabel(selA)}</strong> vs
+          <strong>${teamLabel(selB)}</strong>) = <strong>${p > 0 ? pct(p)
+            : `never in ${S.meta.nSims.toLocaleString()} sims`}</strong></p>`;
+      } else {
+        selLine = `<p class="sel-line muted small">Pick a team on the other side to
+          see that exact matchup's odds.</p>`;
+      }
+    }
     return `
       <article class="card ko-card ${S.attended.has(m.id) ? "attending" : ""}">
         <header>
@@ -348,9 +381,11 @@ export function renderProbs(S, el) {
         </header>
         ${result}
         <div class="slots">
-          <div><h4>${esc(slotDesc(m.slot1))}</h4><ul>${slotList(probs.slot1, known?.[0])}</ul></div>
-          <div><h4>${esc(slotDesc(m.slot2))}</h4><ul>${slotList(probs.slot2, known?.[1])}</ul></div>
+          <div><h4>${esc(slotDesc(m.slot1))}</h4><ul>${slotList(probs.slot1, known?.[0], m.id, 1, sel[1])}</ul></div>
+          <div><h4>${esc(slotDesc(m.slot2))}</h4><ul>${slotList(probs.slot2, known?.[1], m.id, 2, sel[2])}</ul></div>
         </div>
+        ${selLine}
+        ${matchups}
       </article>`;
   };
 

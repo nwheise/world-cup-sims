@@ -272,19 +272,26 @@ export function runSims(prep, fixed, n, seed = 42, onProgress = null) {
 
 /**
  * P(team appears in knockout match), tallied separately per slot (home/away
- * sides of the bracket line), for all 32 matches + champion odds.
- * matches[i] = { slot1: [[teamIdx, p] desc...], slot2: [...] }.
+ * sides of the bracket line), plus the joint MATCHUP distribution, for all 32
+ * matches + champion odds.
+ * matches[i] = { slot1: [[teamIdx, p] desc...], slot2: [...],
+ *                matchups: [[teamIdx1, teamIdx2, p] desc...] (every observed
+ *                pair, so the UI can answer arbitrary "X vs Y?" queries) }.
  */
-export function appearanceProbs(prep, store) {
+export function appearanceProbs(prep, store, topMatchups = Infinity) {
   const { n, koTeams, koWin } = store;
   const nt = prep.teams.length;
   const counts1 = Array.from({ length: 32 }, () => new Float64Array(nt));
   const counts2 = Array.from({ length: 32 }, () => new Float64Array(nt));
+  const pairs = Array.from({ length: 32 }, () => new Map());
   const champ = new Float64Array(nt);
   for (let s = 0; s < n; s++) {
     for (let i = 0; i < 32; i++) {
-      counts1[i][koTeams[s * 64 + 2 * i]] += 1;
-      counts2[i][koTeams[s * 64 + 2 * i + 1]] += 1;
+      const t1 = koTeams[s * 64 + 2 * i], t2 = koTeams[s * 64 + 2 * i + 1];
+      counts1[i][t1] += 1;
+      counts2[i][t2] += 1;
+      const key = t1 * 64 + t2;
+      pairs[i].set(key, (pairs[i].get(key) ?? 0) + 1);
     }
     champ[koWin[s * 32 + 31]] += 1;
   }
@@ -294,8 +301,14 @@ export function appearanceProbs(prep, store) {
     out.sort((a, b) => b[1] - a[1]);
     return out;
   };
+  const topPairs = (m) => [...m.entries()]
+    .sort((x, y) => y[1] - x[1])
+    .slice(0, topMatchups)
+    .map(([key, c]) => [Math.floor(key / 64), key % 64, c / n]);
   return {
-    matches: counts1.map((c1, i) => ({ slot1: toSorted(c1), slot2: toSorted(counts2[i]) })),
+    matches: counts1.map((c1, i) => ({
+      slot1: toSorted(c1), slot2: toSorted(counts2[i]), matchups: topPairs(pairs[i]),
+    })),
     champion: toSorted(champ),
   };
 }

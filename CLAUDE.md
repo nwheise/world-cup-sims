@@ -30,7 +30,7 @@ start), zero group matches had been played** — the sim simulates all 72 group 
 | `.github/workflows/site.yml` | One workflow: push to main → JS tests + Pages deploy; 2-hour cron / manual dispatch → refresh results.json, commit if changed, then test + deploy. Single workflow on purpose: GITHUB_TOKEN pushes don't trigger other workflows. One-time repo setup: Settings → Pages → Source "GitHub Actions". |
 | `tests/sim-core.test.mjs` | **JS test suite** (`node --test "tests/**/*.test.mjs"`, no npm deps, node ≥ 20). Mirrors the Python suite's invariants AND cross-validates the JS port against the Python sim's published findings (Belgium ~58% M82, USA ~31% M94, Germany-third ~dead at <2%). Also covers: real results pinning sim outcomes, known-knockout-winner honoring, per-slot appearance probs summing to 1, the JS loyalty guard, and cheer analysis end-to-end (incl. known-participant knockout recommendations). |
 | `validate_annex_c.py` | Structural validator for `annex_c.txt`. Exposes `validate(path) -> [errors]` (empty == valid) and runs standalone (`python3 validate_annex_c.py`). Checks: rows 1–495 present, every 8-of-12 combination appears exactly once, each row's 8 assignments are a permutation of its 8 qualified groups, every assignment respects the per-slot allowed-group sets. |
-| `test_sim.py` | **Reproducible test suite** (stdlib `unittest`, no deps). Run: `python3 -m unittest test_sim -v` (or `python3 test_sim.py`). Covers Annex C validity + loaded-table legality, data integrity (12×4 groups, 48 distinct teams, every team rated, ratings unique for the deterministic tiebreaker), the match model (Elo symmetry/monotonicity, knockouts never tie), group ranking (incl. a constructed **H2H-beats-overall-GD** case), full-tournament invariants (72 games, M82 home = Group G winner, thirds from slot-legal groups, `seattle_teams` consistency, seed reproducibility), preference math, the cheering-guide analysis core, and the loyalty guard (`assess_loyalty`: perverse-root detection + swing-based suppression). All randomized tests are seeded. Last run: 33 tests OK. |
+| `test_sim.py` | **Reproducible test suite** (stdlib `unittest`, no deps). Run: `python3 -m unittest test_sim -v` (or `python3 test_sim.py`). Covers Annex C validity + loaded-table legality, data integrity (12×4 groups, 48 distinct teams, every team rated, ratings unique for the deterministic tiebreaker), the match model (Elo symmetry/monotonicity, knockouts never tie), group ranking (incl. a constructed **H2H-beats-overall-GD** case), full-tournament invariants (72 games, M82 home = Group G winner, thirds from slot-legal groups, `seattle_teams` consistency, seed reproducibility), preference math, the cheering-guide analysis core, and the loyalty guard (`assess_loyalty`: perverse-root detection + swing-based suppression incl. cross-team beneficiaries). All randomized tests are seeded. Last run: 34 tests OK. |
 
 ## Verified tournament facts (do not re-derive; sourced and checked June 11, 2026)
 
@@ -178,9 +178,12 @@ moving part is a scheduled GitHub Action.
   key). Score schema: `score.ft`/`score.et`/`score.p` — winner = p over et over ft. Team-name
   mapping lives in `scripts/update_results.py` (and `build_data.py`).
 - **Four tabs**: Cheer guide (recommendations sorted by date by default, impact sort optional;
-  loyalty notes + noise-floor collapse), My matches (checkbox schedule, venue filter), My teams
-  (head-to-head duels + ranking), Probabilities (attended matches pinned on top, per-slot
-  knockout odds, group standings + advancement, champion).
+  loyalty notes + noise-floor collapse + per-liked-team "how this moves your teams" tables),
+  My matches (checkbox schedule, venue filter), My teams (head-to-head duels + ranking + 📌
+  pinning that hard-sets a team's weight to 1.0, stored in `wc26:pinned`), Probabilities
+  (attended matches pinned on top, per-slot knockout odds, top-3 most likely matchups per
+  card, click-a-team-per-side to query any exact matchup's probability — the worker ships the
+  FULL joint matchup distribution per match — group standings + advancement, champion).
 - The browser smoke test was driven via headless Chrome + CDP; rendered numbers matched the
   Python findings. After JS changes run `node --test "tests/**/*.test.mjs"`.
 

@@ -169,6 +169,29 @@ test("appearance probabilities match the Python sim's findings", () => {
   assert.ok(Math.abs(champSum - 1) < 1e-9);
 });
 
+test("matchup distributions: complete, coherent, and matching the published finding", () => {
+  const probs = appearanceProbs(prep, store);
+  for (const { matchups, slot1 } of probs.matches) {
+    // full joint distribution: sums to 1, sorted desc
+    const sum = matchups.reduce((acc, [, , p]) => acc + p, 0);
+    assert.ok(Math.abs(sum - 1) < 1e-9, `matchup sum ${sum}`);
+    for (let i = 1; i < matchups.length; i++) {
+      assert.ok(matchups[i - 1][2] >= matchups[i][2], "sorted desc");
+    }
+    // marginal consistency: P(slot1 = top team) equals its pair-sum
+    const [topTeam, topP] = slot1[0];
+    const pairSum = matchups.filter(([t1]) => t1 === topTeam)
+      .reduce((acc, [, , p]) => acc + p, 0);
+    assert.ok(Math.abs(pairSum - topP) < 1e-9, "joint marginalizes to slot prob");
+  }
+  // CLAUDE.md key finding: most likely M94 matchup is Belgium vs USA ~13%.
+  const m94 = probs.matches[94 - 73].matchups;
+  const [t1, t2, p] = m94[0];
+  const names = [prep.teams[t1], prep.teams[t2]].sort();
+  assert.deepEqual(names, ["Belgium", "USA"], `top M94 matchup: ${names}`);
+  assert.ok(Math.abs(p - 0.13) < 0.05, `P(Belgium vs USA in M94) = ${p}`);
+});
+
 test("group probabilities are coherent", () => {
   const gp = groupProbs(prep, store);
   for (const t of ["USA", "Belgium", "Haiti"]) {

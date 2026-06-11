@@ -3,3 +3,10 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# Personal preference data from rank_prefs.py
+preferences.json
+preferences.json.tmp
+
+# Saved simulation output dumps
+output.txt

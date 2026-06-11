@@ -204,6 +204,53 @@ def simulate_group(teams):
 # FULL SIMULATION
 # ---------------------------------------------------------------------------
 
+def simulate_tournament():
+    """Simulate one full tournament through the two Seattle matches.
+
+    Returns a record exposing both the inputs (every group-game scoreline) and
+    the outputs (the Seattle lineup), so callers can either tally appearance
+    probabilities (see run) or bucket games by outcome (see cheer_guide.py):
+        {
+          "group_results": {(team_a, team_b): (goals_a, goals_b), ...},  # all 72
+          "m82": (1G_winner, assigned_3rd),        # Seattle R32 participants
+          "m94": (winner_M81, winner_M82),         # Seattle R16 participants
+          "seattle_teams": {... up to 4 distinct teams that play in Seattle},
+        }
+    """
+    firsts, thirds, third_key = {}, {}, {}
+    group_results = {}
+    for g, teams in GROUPS.items():
+        results = {(a, b): simulate_match(a, b) for a, b in combinations(teams, 2)}
+        group_results.update(results)
+        ranked, pts, gd, gf = rank_group(teams, results)
+        firsts[g] = ranked[0]
+        t3 = ranked[2]
+        thirds[g] = t3
+        # Official third-place ranking key: pts, GD, GF, [conduct], ranking
+        third_key[g] = (pts[t3], gd[t3], gf[t3], RATINGS[t3])
+
+    # Best 8 third-place groups, then FIFA's Annex C assignment
+    qualified = frozenset(sorted(GROUPS, key=lambda g: third_key[g],
+                                 reverse=True)[:8])
+    assign = ANNEX_C[qualified]  # {match_number: group}
+
+    # Match 82 (Seattle): 1G vs assigned third.  Match 81 (SF): 1D vs assigned third.
+    t82_a, t82_b = firsts["G"], thirds[assign[82]]
+    t81_a, t81_b = firsts["D"], thirds[assign[81]]
+
+    ga, gb = simulate_match(t82_a, t82_b, knockout=True)
+    w82 = t82_a if ga > gb else t82_b
+    ga, gb = simulate_match(t81_a, t81_b, knockout=True)
+    w81 = t81_a if ga > gb else t81_b
+
+    return {
+        "group_results": group_results,
+        "m82": (t82_a, t82_b),
+        "m94": (w81, w82),
+        "seattle_teams": {t82_a, t82_b, w81, w82},
+    }
+
+
 def run(n_sims=20000, seed=None):
     if seed is not None:
         random.seed(seed)
@@ -213,34 +260,13 @@ def run(n_sims=20000, seed=None):
     usa_in_94 = 0
 
     for _ in range(n_sims):
-        firsts, thirds, third_key = {}, {}, {}
-        for g, teams in GROUPS.items():
-            ranked, pts, gd, gf = simulate_group(teams)
-            firsts[g] = ranked[0]
-            t3 = ranked[2]
-            thirds[g] = t3
-            # Official third-place ranking key: pts, GD, GF, [conduct], ranking
-            third_key[g] = (pts[t3], gd[t3], gf[t3], RATINGS[t3])
-
-        # Best 8 third-place groups, then FIFA's Annex C assignment
-        qualified = frozenset(sorted(GROUPS, key=lambda g: third_key[g],
-                                     reverse=True)[:8])
-        assign = ANNEX_C[qualified]  # {match_number: group}
-
-        # Match 82 (Seattle): 1G vs assigned third
-        t82_a, t82_b = firsts["G"], thirds[assign[82]]
+        rec = simulate_tournament()
+        t82_a, t82_b = rec["m82"]
         m82_appear[t82_a] += 1
         m82_appear[t82_b] += 1
         m82_matchups[tuple(sorted((t82_a, t82_b)))] += 1
 
-        # Match 81: 1D vs assigned third
-        t81_a, t81_b = firsts["D"], thirds[assign[81]]
-
-        ga, gb = simulate_match(t82_a, t82_b, knockout=True)
-        w82 = t82_a if ga > gb else t82_b
-        ga, gb = simulate_match(t81_a, t81_b, knockout=True)
-        w81 = t81_a if ga > gb else t81_b
-
+        w81, w82 = rec["m94"]
         m94_appear[w81] += 1
         m94_appear[w82] += 1
         m94_matchups[tuple(sorted((w81, w82)))] += 1

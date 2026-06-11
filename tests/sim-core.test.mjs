@@ -336,6 +336,46 @@ test("analyzeCheer: USA fan attending Seattle wants USA to win its group games",
     "a USA game should be among the most impactful");
 });
 
+test("loyalty percentages are true conditional probabilities (bucket == pinned run)", () => {
+  // The guard displays P(team appears in a match you attend | outcome). That
+  // bucketed conditional must equal the probability measured by a SEPARATE
+  // simulation where the outcome is pinned as a real played result — the
+  // definition of conditioning when games are independent. Uses the verified
+  // headline case: Mexico losing to South Africa jumps Mexico's Seattle odds
+  // (Group A third -> M82 in ~95% of Annex C rows), ~8% -> ~23%.
+  const gid = "Mexico|South Africa";
+  const { rows } = analyzeCheer(prep, noResults, store, { Mexico: 1.0 }, ["m82", "m94"]);
+  const r = rows.find((x) => x.id === gid);
+  assert.equal(r.best, "B", "utility-max: root for South Africa");
+  assert.equal(r.loyalty.kind, "self");
+
+  const mexIdx = teamIdx("Mexico");
+  const i82 = 82 - 73, i94 = 94 - 73;
+  const pinnedP = (score) => {
+    const fixed = prepareResults(prep, { group_results: { [gid]: score }, knockout: {} });
+    const st = runSims(prep, fixed, 4000, 1234);
+    let hits = 0;
+    for (let s = 0; s < st.n; s++) {
+      const t = st.koTeams;
+      if (t[s*64+2*i82] === mexIdx || t[s*64+2*i82+1] === mexIdx ||
+          t[s*64+2*i94] === mexIdx || t[s*64+2*i94+1] === mexIdx) hits++;
+    }
+    return hits / st.n;
+  };
+  // 2-0 loss vs the bucket's average over all losing scorelines: allow MC +
+  // scoreline-mix slack, but the agreement must be tight enough to prove the
+  // displayed numbers mean what the UI says they mean.
+  const lossPinned = pinnedP([0, 2]);
+  assert.ok(Math.abs(lossPinned - r.pSeatA.B) < 0.05,
+    `bucket ${r.pSeatA.B} vs pinned ${lossPinned}`);
+  const winPinned = pinnedP([2, 0]);
+  assert.ok(Math.abs(winPinned - r.pSeatA.A) < 0.05,
+    `bucket ${r.pSeatA.A} vs pinned ${winPinned}`);
+  // And the headline effect itself: losing ~triples Mexico's Seattle odds.
+  assert.ok(r.pSeatA.B > 2 * r.pSeatA.A,
+    `losing must dwarf winning: ${r.pSeatA.A} -> ${r.pSeatA.B}`);
+});
+
 test("analyzeCheer: full-lineup optimization trades one liked team for a more-loved one", () => {
   // Love Switzerland, like Canada (same group B), attend M85 (Vancouver:
   // Group B winner vs a 3rd from E/F/G/I/J — so a Group B THIRD can't get

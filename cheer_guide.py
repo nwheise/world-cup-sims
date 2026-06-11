@@ -303,24 +303,28 @@ def main():
         loy = r["loyalty"]
         if loy and loy["kind"] == "other":
             print(f"            ↳ yes, this roots AGAINST {loy['against']} — but it"
-                  f" lifts {loy['beneficiary']}'s Seattle odds: "
-                  f"{100*loy['ben_win']:.0f}% → {100*loy['ben_rec']:.0f}% "
+                  f" boosts {loy['beneficiary']}: P(see them in Seattle) = "
+                  f"{100*loy['ben_rec']:.0f}% with this result vs "
+                  f"{100*loy['ben_win']:.0f}% if {loy['against']} won "
                   f"(+{100*loy['ben_swing']:.0f}pp)")
         elif loy:
-            print(f"            ↳ yes, this roots AGAINST {loy['against']} — but it's"
-                  f" their best Seattle path: {100*loy['p_win']:.0f}% → "
-                  f"{100*loy['p_rec']:.0f}% (+{100*loy['swing']:.0f}pp)")
+            print(f"            ↳ yes, this roots AGAINST {loy['against']} — but"
+                  f" losing is their best Seattle path (3rd place routes there):"
+                  f" P(see them in Seattle) = {100*loy['p_rec']:.0f}% with this"
+                  f" result vs only {100*loy['p_win']:.0f}% if they win "
+                  f"(+{100*loy['swing']:.0f}pp)")
 
     if suppressed:
         print(f"\nLOYALTY NOTES  (skipped above — rooting against a favorite "
               f"helps no team you like enough)")
         for r in sorted(suppressed, key=lambda r: -r["loyalty"]["swing"]):
             loy = r["loyalty"]
-            print(f"  • Grp {r['group']}  {r['a']} vs {r['b']}: pure utility says "
-                  f"root against {loy['against']}, but no favorite gains "
-                  f"{100*SWING_THRESHOLD:.0f}pp from it ({loy['against']} "
-                  f"themselves: {100*loy['p_win']:.0f}% → {100*loy['p_rec']:.0f}%)"
-                  f" — just root for {loy['against']}.")
+            verb = ("only nudges" if loy["swing"] >= 0 else "actually DROPS")
+            print(f"  • Grp {r['group']}  {r['a']} vs {r['b']}: raw lineup math "
+                  f"leans against {loy['against']}, but that {verb} their own "
+                  f"Seattle odds ({100*loy['p_rec']:.0f}% with that result vs "
+                  f"{100*loy['p_win']:.0f}% if they win), and no other favorite "
+                  f"meaningfully gains — just root for {loy['against']}.")
 
     if negligible:
         max_tail = max(r["impact"] for r in negligible)

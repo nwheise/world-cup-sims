@@ -109,14 +109,20 @@ export function renderCheer(S, el) {
       }).join(" · ");
     let loy = "";
     if (r.loyalty && !r.loyalty.suppressible) {
-      loy = r.loyalty.kind === "other" ? `
-      <p class="loyalty">⚠️ Yes — this roots <strong>against ${teamLabel(r.loyalty.against)}</strong>,
-      but it lifts <strong>${teamLabel(r.loyalty.beneficiary)}</strong>'s chances of playing
-      in front of you: ${pct(r.loyalty.benWin)} → ${pct(r.loyalty.benRec)}
-      (+${Math.round(r.loyalty.benSwing * 100)}pp)</p>` : `
-      <p class="loyalty">⚠️ Yes — this roots <strong>against ${teamLabel(r.loyalty.against)}</strong>,
-      but it's their best path to your matches:
-      ${pct(r.loyalty.pWin)} → ${pct(r.loyalty.pRec)} (+${Math.round(r.loyalty.swing * 100)}pp)</p>`;
+      const L = r.loyalty;
+      // Spell out what each percentage is and which outcome it belongs to —
+      // a bare "8% → 23%" reads as a trend, not two conditional probabilities.
+      loy = L.kind === "other" ? `
+      <p class="loyalty">⚠️ Yes — this roots <strong>against ${teamLabel(L.against)}</strong>,
+      but it boosts <strong>${teamLabel(L.beneficiary)}</strong>: the chance you see
+      ${esc(displayName(L.beneficiary))} live at one of your matches is
+      <strong>${pct(L.benRec)}</strong> with this result, vs ${pct(L.benWin)} if
+      ${esc(displayName(L.against))} won instead (+${Math.round(L.benSwing * 100)}pp).</p>` : `
+      <p class="loyalty">⚠️ Yes — this roots <strong>against ${teamLabel(L.against)}</strong>,
+      but losing is their best path to your matches (3rd place gets routed there):
+      the chance you see ${esc(displayName(L.against))} live is
+      <strong>${pct(L.pRec)}</strong> with this result, vs only ${pct(L.pWin)} if they
+      won (+${Math.round(L.swing * 100)}pp).</p>`;
     }
     const lineupTable = pLineupTable(r);
     return `
@@ -164,13 +170,17 @@ export function renderCheer(S, el) {
       <p class="muted small">Pure math says root against a team you like in these —
       but it doesn't meaningfully improve the odds for any team you like.
       Just cheer for your team.</p>
-      ${suppressed.map((r) => `
+      ${suppressed.map((r) => {
+        const L = r.loyalty;
+        const vs = L.swing >= 0
+          ? `only nudges their chance of appearing at your matches from ${pct(L.pWin)} (if they win) to ${pct(L.pRec)}`
+          : `would actually drop their chance of appearing at your matches from ${pct(L.pWin)} (if they win) to ${pct(L.pRec)}`;
+        return `
         <p class="note">• <strong>${teamLabel(r.a)} vs ${teamLabel(r.b)}</strong>
-        (${fmtKickoff(r.kickoff)}): utility says root against
-        ${esc(displayName(r.loyalty.against))}, but no team you like gains
-        ${"≥"}3pp from it (${esc(displayName(r.loyalty.against))} themselves:
-        ${pct(r.loyalty.pWin)} → ${pct(r.loyalty.pRec)}) — just root for
-        ${esc(displayName(r.loyalty.against))}.</p>`).join("")}` : ""}
+        (${fmtKickoff(r.kickoff)}): raw lineup math leans against
+        ${esc(displayName(L.against))}, but that ${vs}, and no other team you
+        like meaningfully gains — just root for ${esc(displayName(L.against))}.</p>`;
+      }).join("")}` : ""}
     ${negligible.length ? `
       <details class="muted">
         <summary>${negligible.length} more upcoming games are within simulation noise</summary>

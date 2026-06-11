@@ -86,19 +86,25 @@ def emphasize(w):
     return (math.exp(EMPHASIS * w) - 1.0) / (math.exp(EMPHASIS) - 1.0)
 
 
-def assess_loyalty(a, b, best, p_seat, weights):
+def assess_loyalty(a, b, best, p_seat, weights, liked_p=None):
     """Decide whether recommending outcome `best` for game a-vs-b means rooting
-    AGAINST a team you like, and if so how much it actually helps them.
+    AGAINST a team you like, and if so whether the payoff justifies it.
 
     `best` is "A"/"B"/"D" (a wins / b wins / draw). `p_seat[t]` maps each
-    outcome to P(team t reaches Seattle | that outcome). Returns None when the
-    recommendation is not perverse (you're rooting for the team you prefer, or
-    you don't care about either side), otherwise a dict:
-        {against, against_w, p_rec, p_win, swing, suppressible}
-    where `against` is the liked team being denied a win, `p_rec`/`p_win` are
-    their Seattle odds under the recommended vs. their-own-win outcomes, `swing`
-    = p_rec - p_win, and `suppressible` is True when swing < SWING_THRESHOLD
-    (the perverse root barely pays off, so hide it in a footnote)."""
+    outcome to P(team t reaches Seattle | that outcome). `liked_p` (optional)
+    maps OTHER liked teams (any team with weight >= LIKE_FLOOR, possibly
+    including a/b) to the same outcome->probability dicts — because the payoff
+    for rooting against a favorite can arrive via a DIFFERENT favorite (e.g.
+    a draw that denies Canada but protects Switzerland's group-winner path),
+    not only via the denied team's own third-place routing.
+
+    Returns None when the recommendation is not perverse (you're rooting for
+    the team you prefer, or you don't care about either side), otherwise:
+        {against, against_w, p_rec, p_win, swing, kind, suppressible,
+         [beneficiary, ben_rec, ben_win, ben_swing]}
+    kind: "self"  — the denied team itself gains >= SWING_THRESHOLD,
+          "other" — a different liked team does (beneficiary fields present),
+          "none"  — nobody you like meaningfully gains => suppressible."""
     wa, wb = weights.get(a, 0.0), weights.get(b, 0.0)
     if best == "A":            # rooting for a -> denying b
         against, against_w, rooted_for_w = b, wb, wa
@@ -115,8 +121,23 @@ def assess_loyalty(a, b, best, p_seat, weights):
     p = p_seat[against]
     p_rec, p_win = p.get(best, 0.0), p.get(o_win, 0.0)
     swing = p_rec - p_win
-    return {"against": against, "against_w": against_w, "p_rec": p_rec,
-            "p_win": p_win, "swing": swing, "suppressible": swing < SWING_THRESHOLD}
+    out = {"against": against, "against_w": against_w, "p_rec": p_rec,
+           "p_win": p_win, "swing": swing}
+    if swing >= SWING_THRESHOLD:
+        return {**out, "kind": "self", "suppressible": False}
+    # The denied team doesn't gain — does another liked team?
+    best_ben = None
+    for team, pt in (liked_p or {}).items():
+        if team == against:
+            continue
+        gain = pt.get(best, 0.0) - pt.get(o_win, 0.0)
+        if gain >= SWING_THRESHOLD and (best_ben is None or gain > best_ben[1]):
+            best_ben = (team, gain, pt.get(best, 0.0), pt.get(o_win, 0.0))
+    if best_ben:
+        team, gain, ben_rec, ben_win = best_ben
+        return {**out, "kind": "other", "beneficiary": team, "ben_rec": ben_rec,
+                "ben_win": ben_win, "ben_swing": gain, "suppressible": False}
+    return {**out, "kind": "none", "suppressible": True}
 
 
 # pair (frozenset of two teams) -> group letter, for labeling games
@@ -145,12 +166,18 @@ def analyze(weights, n_sims, seed=42):
     top_team = max(weights, key=weights.get)
     random.seed(seed)
 
-    # buckets[(a,b)][outcome] = [sum_utility, count, a_in_seattle, b_in_seattle]
-    # outcome in {"A","D","B"}; the last two counts give P(participant reaches
+    # Teams you clearly like: tracked per game/outcome so the loyalty guard can
+    # credit cross-team payoffs (rooting against one favorite because it helps
+    # another). Capped at the 10 highest-weighted.
+    liked = sorted((t for t, w in weights.items() if w >= LIKE_FLOOR),
+                   key=weights.get, reverse=True)[:10]
+
+    # buckets[(a,b)][outcome] = [sum_utility, count, a_in_seattle, b_in_seattle,
+    #                            per_liked_team_in_seattle list]
+    # outcome in {"A","D","B"}; the membership counts give P(team reaches
     # Seattle | outcome), used to judge "is rooting against them worth it?".
-    buckets = defaultdict(lambda: {"A": [0.0, 0, 0, 0],
-                                   "D": [0.0, 0, 0, 0],
-                                   "B": [0.0, 0, 0, 0]})
+    buckets = defaultdict(lambda: {o: [0.0, 0, 0, 0, [0] * len(liked)]
+                                   for o in ("A", "D", "B")})
     total_u = 0.0
     total_u2 = 0.0
     top_in_seattle = 0
@@ -165,6 +192,7 @@ def analyze(weights, n_sims, seed=42):
         total_u2 += u * u
         if top_team in seattle:
             top_in_seattle += 1
+        liked_in = [i for i, t in enumerate(liked) if t in seattle]
         for (a, b), (ga, gb) in rec["group_results"].items():
             o = "A" if ga > gb else ("B" if gb > ga else "D")
             cell = buckets[(a, b)][o]
@@ -174,6 +202,8 @@ def analyze(weights, n_sims, seed=42):
                 cell[2] += 1
             if b in seattle:
                 cell[3] += 1
+            for i in liked_in:
+                cell[4][i] += 1
 
     # Variance of the utility, for a per-game Monte Carlo noise floor: the
     # impact of two bucket means is only meaningful if it clears sampling error.
@@ -187,6 +217,9 @@ def analyze(weights, n_sims, seed=42):
         # P(participant reaches Seattle | each outcome) — drives the loyalty guard.
         p_seat = {a: {o: bk[o][2] / counts[o] for o in counts},
                   b: {o: bk[o][3] / counts[o] for o in counts}}
+        # Same, for every liked team (cross-team payoffs + transparency).
+        p_lineup = {t: {o: bk[o][4][i] / counts[o] for o in counts}
+                    for i, t in enumerate(liked)}
         best = max(means, key=means.get)
         worst = min(means, key=means.get)
         impact = means[best] - means[worst]
@@ -196,7 +229,9 @@ def analyze(weights, n_sims, seed=42):
         rows.append({"a": a, "b": b, "means": means, "best": best,
                      "impact": impact, "significant": impact > 3 * se,
                      "group": PAIR_GROUP[frozenset((a, b))], "p_seat": p_seat,
-                     "loyalty": assess_loyalty(a, b, best, p_seat, weights)})
+                     "p_lineup": p_lineup,
+                     "loyalty": assess_loyalty(a, b, best, p_seat, weights,
+                                               liked_p=p_lineup)})
     rows.sort(key=lambda r: r["impact"], reverse=True)
 
     summary = {"top_team": top_team, "n_sims": n_sims,
@@ -263,23 +298,29 @@ def main():
         print(f"[+{r['impact']:.3f}] Grp {r['group']}  {r['a']} vs {r['b']}")
         print(f"          → {verb} {rec_team:<14s} ({outs}){upset}")
         # Worth-it perverse call: be explicit that it means rooting against a
-        # team you like, and show the payoff that justifies it.
+        # team you like, and show the payoff that justifies it — either the
+        # denied team's own best path, or a different favorite's gain.
         loy = r["loyalty"]
-        if loy:
+        if loy and loy["kind"] == "other":
+            print(f"            ↳ yes, this roots AGAINST {loy['against']} — but it"
+                  f" lifts {loy['beneficiary']}'s Seattle odds: "
+                  f"{100*loy['ben_win']:.0f}% → {100*loy['ben_rec']:.0f}% "
+                  f"(+{100*loy['ben_swing']:.0f}pp)")
+        elif loy:
             print(f"            ↳ yes, this roots AGAINST {loy['against']} — but it's"
                   f" their best Seattle path: {100*loy['p_win']:.0f}% → "
                   f"{100*loy['p_rec']:.0f}% (+{100*loy['swing']:.0f}pp)")
 
     if suppressed:
-        print(f"\nLOYALTY NOTES  (skipped above — rooting against a favorite, too "
-              f"little payoff)")
+        print(f"\nLOYALTY NOTES  (skipped above — rooting against a favorite "
+              f"helps no team you like enough)")
         for r in sorted(suppressed, key=lambda r: -r["loyalty"]["swing"]):
             loy = r["loyalty"]
             print(f"  • Grp {r['group']}  {r['a']} vs {r['b']}: pure utility says "
-                  f"root against {loy['against']}, but that only moves their Seattle"
-                  f" odds {100*loy['p_win']:.0f}% → {100*loy['p_rec']:.0f}% "
-                  f"(+{100*loy['swing']:.0f}pp) — not worth it; just root for "
-                  f"{loy['against']}.")
+                  f"root against {loy['against']}, but no favorite gains "
+                  f"{100*SWING_THRESHOLD:.0f}pp from it ({loy['against']} "
+                  f"themselves: {100*loy['p_win']:.0f}% → {100*loy['p_rec']:.0f}%)"
+                  f" — just root for {loy['against']}.")
 
     if negligible:
         max_tail = max(r["impact"] for r in negligible)

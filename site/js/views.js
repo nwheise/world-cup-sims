@@ -10,6 +10,36 @@ import { teamLabel, displayName, flag, kickoffParts, fmtKickoff, slotDesc,
 const bar = (p, cls = "") =>
   `<span class="bar ${cls}"><span style="width:${Math.max(0, Math.min(100, p * 100))}%"></span></span>`;
 
+/**
+ * "How this result moves your teams" — per liked team, P(they end up in your
+ * attended lineup) under each outcome of this game. Rendered only when at
+ * least one liked team's odds actually move (>1pp spread), so the guide can
+ * show that recommendations weigh EVERY team you like, not just the two
+ * playing.
+ */
+function pLineupTable(r) {
+  const teams = Object.entries(r.pLineup || {})
+    .filter(([, p]) => {
+      const vals = Object.values(p);
+      return vals.length >= 2 && Math.max(...vals) - Math.min(...vals) > 0.01;
+    });
+  if (!teams.length) return "";
+  const os = ["A", "D", "B"].filter((o) => r.means[o] !== undefined);
+  const head = os.map((o) =>
+    `<th class="${o === r.best ? "rec" : ""}">${o === "D" ? "draw" : esc(displayName(o === "A" ? r.a : r.b)) + " wins"}</th>`).join("");
+  const rows = teams.map(([t, p]) => `
+    <tr><td>${teamLabel(t)}</td>${os.map((o) =>
+      `<td class="${o === r.best ? "rec" : ""}">${pct(p[o] ?? 0)}</td>`).join("")}</tr>`).join("");
+  return `
+    <details class="lineup-detail">
+      <summary class="muted small">How this result moves your teams</summary>
+      <table class="lineup-table">
+        <tr><th>P(in your matches)</th>${head}</tr>
+        ${rows}
+      </table>
+    </details>`;
+}
+
 const matchChip = (m) =>
   m.kind === "group" || m.group !== undefined
     ? `<span class="chip">Group ${esc(m.group)}</span>`
@@ -77,10 +107,18 @@ export function renderCheer(S, el) {
         const lbl = o === "D" ? "draw" : displayName(o === "A" ? r.a : r.b);
         return `${esc(lbl)} ${r.means[o].toFixed(2)}`;
       }).join(" · ");
-    const loy = r.loyalty && !r.loyalty.suppressible ? `
+    let loy = "";
+    if (r.loyalty && !r.loyalty.suppressible) {
+      loy = r.loyalty.kind === "other" ? `
+      <p class="loyalty">⚠️ Yes — this roots <strong>against ${teamLabel(r.loyalty.against)}</strong>,
+      but it lifts <strong>${teamLabel(r.loyalty.beneficiary)}</strong>'s chances of playing
+      in front of you: ${pct(r.loyalty.benWin)} → ${pct(r.loyalty.benRec)}
+      (+${Math.round(r.loyalty.benSwing * 100)}pp)</p>` : `
       <p class="loyalty">⚠️ Yes — this roots <strong>against ${teamLabel(r.loyalty.against)}</strong>,
       but it's their best path to your matches:
-      ${pct(r.loyalty.pWin)} → ${pct(r.loyalty.pRec)} (+${Math.round(r.loyalty.swing * 100)}pp)</p>` : "";
+      ${pct(r.loyalty.pWin)} → ${pct(r.loyalty.pRec)} (+${Math.round(r.loyalty.swing * 100)}pp)</p>`;
+    }
+    const lineupTable = pLineupTable(r);
     return `
       <article class="card cheer-card">
         <div class="cheer-head">
@@ -97,6 +135,7 @@ export function renderCheer(S, el) {
         </div>
         <p class="muted small">E[lineup] by outcome: ${means}</p>
         ${loy}
+        ${lineupTable}
       </article>`;
   };
 
@@ -123,13 +162,14 @@ export function renderCheer(S, el) {
     ${suppressed.length ? `
       <h2>Loyalty notes</h2>
       <p class="muted small">Pure math says root against a team you like in these —
-      but the payoff is too small to be worth it. Just cheer for your team.</p>
+      but it doesn't meaningfully improve the odds for any team you like.
+      Just cheer for your team.</p>
       ${suppressed.map((r) => `
         <p class="note">• <strong>${teamLabel(r.a)} vs ${teamLabel(r.b)}</strong>
         (${fmtKickoff(r.kickoff)}): utility says root against
-        ${esc(displayName(r.loyalty.against))}, but that only moves their odds
-        ${pct(r.loyalty.pWin)} → ${pct(r.loyalty.pRec)}
-        (+${Math.round(r.loyalty.swing * 100)}pp) — just root for
+        ${esc(displayName(r.loyalty.against))}, but no team you like gains
+        ${"≥"}3pp from it (${esc(displayName(r.loyalty.against))} themselves:
+        ${pct(r.loyalty.pWin)} → ${pct(r.loyalty.pRec)}) — just root for
         ${esc(displayName(r.loyalty.against))}.</p>`).join("")}` : ""}
     ${negligible.length ? `
       <details class="muted">

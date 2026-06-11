@@ -333,13 +333,30 @@ export function emphasize(w, gamma = EMPHASIS) {
 }
 
 /**
- * Loyalty guard, ported from cheer_guide.assess_loyalty. `best` is "A"/"B"/"D";
- * pSeat = {A: {outcome: p}, B: {outcome: p}} — each participant's chance of
- * reaching YOUR attended lineup given the outcome. Returns null when the
- * recommendation isn't perverse, else {against, againstW, pRec, pWin, swing,
- * suppressible}.
+ * Loyalty guard, generalized from cheer_guide.assess_loyalty. Decides whether
+ * recommending `best` ("A"/"B"/"D") for the game a-vs-b roots AGAINST a team
+ * you like, and if so whether the payoff justifies it. Unlike the original
+ * (Seattle-era) version, the payoff can arrive via ANY liked team — e.g.
+ * rooting against Canada because it lifts Switzerland's group-winner path —
+ * not only via the denied team's own third-place routing.
+ *
+ * Args object:
+ *   a, b           participant team names
+ *   wa, wb         their preference weights
+ *   best           recommended outcome
+ *   pSeatA, pSeatB {outcome: P(participant in your attended lineup | outcome)}
+ *   likedP         {teamName: {outcome: p}} for every liked team (may include
+ *                  a/b; the denied team is excluded from the beneficiary scan)
+ *
+ * Returns null when the recommendation isn't perverse, else:
+ *   { against, againstW, pRec, pWin, swing, kind, suppressible,
+ *     beneficiary?, benRec?, benWin?, benSwing? }
+ * kind: "self"  — the denied team itself gains enough (their best path),
+ *       "other" — a different liked team gains enough (beneficiary fields set),
+ *       "none"  — helps nobody you like => suppressible.
  */
-export function assessLoyalty(wa, wb, best, pSeatA, pSeatB, opts = {}) {
+export function assessLoyalty({ a, b, wa, wb, best, pSeatA, pSeatB,
+                                likedP = {} }, opts = {}) {
   const likeFloor = opts.likeFloor ?? LIKE_FLOOR;
   const swingThreshold = opts.swingThreshold ?? SWING_THRESHOLD;
   let againstIsA, againstW, rootedForW;
@@ -347,12 +364,27 @@ export function assessLoyalty(wa, wb, best, pSeatA, pSeatB, opts = {}) {
   else if (best === "B") { againstIsA = true; againstW = wa; rootedForW = wb; }
   else { againstIsA = wa >= wb; againstW = Math.max(wa, wb); rootedForW = -1.0; }
   if (againstW < likeFloor || againstW <= rootedForW) return null;
+  const against = againstIsA ? a : b;
   const p = againstIsA ? pSeatA : pSeatB;
-  const oWin = againstIsA ? "A" : "B";
+  const oWin = againstIsA ? "A" : "B";  // the denied team's own-win outcome
   const pRec = p[best] ?? 0.0, pWin = p[oWin] ?? 0.0;
   const swing = pRec - pWin;
-  return { againstIsA, againstW, pRec, pWin, swing,
-           suppressible: swing < swingThreshold };
+  const out = { against, againstW, pRec, pWin, swing };
+  if (swing >= swingThreshold) {
+    return { ...out, kind: "self", suppressible: false };
+  }
+  // The denied team doesn't gain — does another liked team?
+  let ben = null;
+  for (const [team, pt] of Object.entries(likedP)) {
+    if (team === against) continue;
+    const gain = (pt[best] ?? 0.0) - (pt[oWin] ?? 0.0);
+    if (gain >= swingThreshold && (!ben || gain > ben.benSwing)) {
+      ben = { beneficiary: team, benRec: pt[best] ?? 0.0,
+              benWin: pt[oWin] ?? 0.0, benSwing: gain };
+    }
+  }
+  if (ben) return { ...out, ...ben, kind: "other", suppressible: false };
+  return { ...out, kind: "none", suppressible: true };
 }
 
 /**
@@ -373,11 +405,21 @@ export function assessLoyalty(wa, wb, best, pSeatA, pSeatB, opts = {}) {
  */
 export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}) {
   const gamma = opts.emphasis ?? EMPHASIS;
+  const likeFloor = opts.likeFloor ?? LIKE_FLOOR;
   const { n, outcomes, koTeams } = store;
   const nt = prep.teams.length;
 
   const ew = new Float64Array(nt);
   for (let t = 0; t < nt; t++) ew[t] = emphasize(weights[prep.teams[t]] ?? 0.0, gamma);
+
+  // Teams you clearly like: tracked per game/outcome so the loyalty guard can
+  // credit cross-team payoffs and the UI can show the full-lineup reasoning.
+  // Capped at the 10 highest-weighted (counter cost is per liked team per game).
+  const likedIdx = [];
+  for (let t = 0; t < nt; t++) if ((weights[prep.teams[t]] ?? 0.0) >= likeFloor) likedIdx.push(t);
+  likedIdx.sort((x, y) => (weights[prep.teams[y]] ?? 0) - (weights[prep.teams[x]] ?? 0));
+  likedIdx.length = Math.min(likedIdx.length, 10);
+  const nLiked = likedIdx.length;
 
   // Attended matches -> the indices the per-sim lineup is built from.
   const attended = new Set(attendedIds);
@@ -392,8 +434,10 @@ export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}
     if (fixed.koKnown[i] && fixed.koWinner[i] === NONE) koRows.push(i);
   });
 
-  // Buckets: per game per outcome -> [sumU, count, aInLineup, bInLineup]
-  const mkBucket = () => ({ A: [0, 0, 0, 0], D: [0, 0, 0, 0], B: [0, 0, 0, 0] });
+  // Buckets: per game per outcome ->
+  //   [sumU, count, aInLineup, bInLineup, perLikedTeamInLineup[]]
+  const mkCell = () => [0, 0, 0, 0, new Float64Array(nLiked)];
+  const mkBucket = () => ({ A: mkCell(), D: mkCell(), B: mkCell() });
   const gBuckets = groupRows.map(mkBucket);
   const kBuckets = koRows.map(mkBucket);
 
@@ -424,6 +468,7 @@ export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}
       cell[0] += u; cell[1] += 1;
       if (mark[g.a] === s) cell[2] += 1;
       if (mark[g.b] === s) cell[3] += 1;
+      for (let l = 0; l < nLiked; l++) if (mark[likedIdx[l]] === s) cell[4][l] += 1;
     }
     for (let r = 0; r < koRows.length; r++) {
       const i = koRows[r];
@@ -437,6 +482,7 @@ export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}
       cell[0] += u; cell[1] += 1;
       if (mark[t1] === s) cell[2] += 1;
       if (mark[t2] === s) cell[3] += 1;
+      for (let l = 0; l < nLiked; l++) if (mark[likedIdx[l]] === s) cell[4][l] += 1;
     }
   }
 
@@ -444,11 +490,14 @@ export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}
 
   const buildRow = (kind, id, aIdx, bIdx, bucket, extra) => {
     const means = {}, counts = {}, pSeatA = {}, pSeatB = {};
+    const pLineup = {};
+    for (let l = 0; l < nLiked; l++) pLineup[prep.teams[likedIdx[l]]] = {};
     for (const o of ["A", "D", "B"]) {
-      const [sum, c, ra, rb] = bucket[o];
+      const [sum, c, ra, rb, lc] = bucket[o];
       if (!c) continue;
       means[o] = sum / c; counts[o] = c;
       pSeatA[o] = ra / c; pSeatB[o] = rb / c;
+      for (let l = 0; l < nLiked; l++) pLineup[prep.teams[likedIdx[l]]][o] = lc[l] / c;
     }
     const os = Object.keys(means);
     if (os.length < 2) return null;   // outcome effectively decided in-sim
@@ -460,17 +509,16 @@ export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}
     const impact = means[best] - means[worst];
     const se = varU > 0
       ? Math.sqrt(varU * (1 / counts[best] + 1 / counts[worst])) : 0;
-    const wa = weights[prep.teams[aIdx]] ?? 0.0;
-    const wb = weights[prep.teams[bIdx]] ?? 0.0;
-    const loyRaw = assessLoyalty(wa, wb, best, pSeatA, pSeatB, opts);
-    const loyalty = loyRaw && {
-      ...loyRaw,
-      against: prep.teams[loyRaw.againstIsA ? aIdx : bIdx],
-    };
+    const a = prep.teams[aIdx], b = prep.teams[bIdx];
+    const loyalty = assessLoyalty({
+      a, b,
+      wa: weights[a] ?? 0.0, wb: weights[b] ?? 0.0,
+      best, pSeatA, pSeatB, likedP: pLineup,
+    }, opts);
     return {
-      kind, id, a: prep.teams[aIdx], b: prep.teams[bIdx],
+      kind, id, a, b,
       means, counts, best, impact, significant: impact > 3 * se,
-      pSeatA, pSeatB, loyalty, ...extra,
+      pSeatA, pSeatB, pLineup, loyalty, ...extra,
     };
   };
 

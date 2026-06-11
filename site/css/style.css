@@ -101,6 +101,13 @@ select {
 .cheer-impact { display: flex; align-items: center; font-size: 0.8rem; }
 .cheer-impact .bar { margin-left: 0; width: 160px; }
 .loyalty { color: var(--warn); font-size: 0.9rem; margin: 6px 0 0; }
+.lineup-detail { margin-top: 6px; }
+.lineup-detail summary { cursor: pointer; }
+.lineup-table { border-collapse: collapse; font-size: 0.82rem; margin-top: 6px; }
+.lineup-table th { color: var(--muted); font-weight: 500; text-align: right; padding: 2px 10px; }
+.lineup-table td { padding: 2px 10px; text-align: right; font-variant-numeric: tabular-nums; }
+.lineup-table th:first-child, .lineup-table td:first-child { text-align: left; padding-left: 0; }
+.lineup-table .rec { color: var(--accent); font-weight: 600; }
 .summary p { margin: 4px 0; }
 
 /* --- matches --- */
@@ -137,7 +144,7 @@ select {
 .ranking .rk-team { flex: 0 0 220px; }
 
 /* --- probabilities --- */
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .grid .card { margin: 0; }
 .ko-card header { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
 .ko-card.attending { outline: 1px solid var(--accent); }
@@ -161,6 +168,7 @@ footer summary { cursor: pointer; color: var(--muted); }
 footer ul { color: var(--muted); font-size: 0.9rem; }
 
 @media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr; }
   .ranking .rk-team { flex-basis: 150px; }
   .cheer-head .when { margin-left: 0; }
   .match-row .time { width: 60px; }

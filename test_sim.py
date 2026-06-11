@@ -301,8 +301,16 @@ class TestCheerGuide(unittest.TestCase):
                 loy = r["loyalty"]
                 self.assertIn(loy["against"], (r["a"], r["b"]))
                 self.assertAlmostEqual(loy["swing"], loy["p_rec"] - loy["p_win"])
-                self.assertEqual(loy["suppressible"],
-                                 loy["swing"] < cheer_guide.SWING_THRESHOLD)
+                self.assertIn(loy["kind"], ("self", "other", "none"))
+                # suppressed iff NO liked team (denied or otherwise) gains enough
+                self.assertEqual(loy["suppressible"], loy["kind"] == "none")
+                if loy["kind"] == "self":
+                    self.assertGreaterEqual(loy["swing"],
+                                            cheer_guide.SWING_THRESHOLD)
+                elif loy["kind"] == "other":
+                    self.assertGreaterEqual(loy["ben_swing"],
+                                            cheer_guide.SWING_THRESHOLD)
+                    self.assertIn(loy["beneficiary"], r["p_lineup"])
 
 
 class TestLoyaltyGuard(unittest.TestCase):
@@ -353,6 +361,30 @@ class TestLoyaltyGuard(unittest.TestCase):
         loy = cheer_guide.assess_loyalty("Mexico", "South Africa", "D", p_seat, w)
         self.assertEqual(loy["against"], "Mexico")
         # swing vs. Mexico winning (A): 0.04 - 0.30 < 0 -> clearly suppressible
+        self.assertEqual(loy["kind"], "none")
+        self.assertTrue(loy["suppressible"])
+
+    def test_cross_team_payoff_rescues_the_call(self):
+        # The recommended draw HURTS the denied favorite's own odds, but lifts
+        # a different favorite enough — the call must be kept (kind="other"),
+        # not demoted to "just root for them".
+        w = {"Canada": 0.55, "Bosnia-Herzegovina": 0.0, "Switzerland": 1.0}
+        p_seat = {"Canada": {"A": 0.48, "B": 0.10, "D": 0.26},
+                  "Bosnia-Herzegovina": {"A": 0.02, "B": 0.33, "D": 0.12}}
+        liked_p = {"Canada": p_seat["Canada"],
+                   "Switzerland": {"A": 0.31, "B": 0.38, "D": 0.43}}
+        loy = cheer_guide.assess_loyalty("Canada", "Bosnia-Herzegovina", "D",
+                                         p_seat, w, liked_p=liked_p)
+        self.assertEqual(loy["against"], "Canada")
+        self.assertEqual(loy["kind"], "other")
+        self.assertEqual(loy["beneficiary"], "Switzerland")
+        self.assertAlmostEqual(loy["ben_swing"], 0.12)
+        self.assertFalse(loy["suppressible"])
+        # Without another beneficiary the same call is suppressed.
+        loy = cheer_guide.assess_loyalty("Canada", "Bosnia-Herzegovina", "D",
+                                         p_seat, w,
+                                         liked_p={"Canada": p_seat["Canada"]})
+        self.assertEqual(loy["kind"], "none")
         self.assertTrue(loy["suppressible"])
 
 

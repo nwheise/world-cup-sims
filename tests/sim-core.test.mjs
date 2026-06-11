@@ -252,24 +252,63 @@ test("prefs: Elo replay, weights, pair picking", () => {
 
 // --- loyalty guard -------------------------------------------------------------------
 
-test("assessLoyalty: ported semantics", () => {
-  // Rooting for B against a liked A, with a big swing -> perverse but worth it.
-  let loy = assessLoyalty(0.9, 0.1, "B", { A: 0.09, B: 0.25 }, { A: 0.0, B: 0.0 });
-  assert.ok(loy && !loy.againstIsA === false); // against A
-  assert.ok(loy.againstIsA);
+test("assessLoyalty: self-benefit semantics (ported)", () => {
+  const base = { a: "X", b: "Y", wa: 0.9, wb: 0.1 };
+  // Rooting for B against a liked A, with a big swing -> perverse but worth it
+  // via A's OWN path (3rd-place routing).
+  let loy = assessLoyalty({ ...base, best: "B",
+    pSeatA: { A: 0.09, B: 0.25 }, pSeatB: { A: 0.0, B: 0.0 } });
+  assert.equal(loy.against, "X");
+  assert.equal(loy.kind, "self");
   assert.ok(Math.abs(loy.swing - 0.16) < 1e-9);
   assert.equal(loy.suppressible, false);
-  // Tiny swing -> suppressible.
-  loy = assessLoyalty(0.9, 0.1, "B", { A: 0.02, B: 0.03 }, { A: 0, B: 0 });
+  // Tiny swing, nobody else gains -> suppressible.
+  loy = assessLoyalty({ ...base, best: "B",
+    pSeatA: { A: 0.02, B: 0.03 }, pSeatB: { A: 0, B: 0 } });
+  assert.equal(loy.kind, "none");
   assert.ok(loy.suppressible);
   // Not perverse: you're told to root FOR the team you prefer.
-  assert.equal(assessLoyalty(0.9, 0.1, "A", { A: 0.5, B: 0.1 }, { A: 0, B: 0 }), null);
+  assert.equal(assessLoyalty({ ...base, best: "A",
+    pSeatA: { A: 0.5, B: 0.1 }, pSeatB: { A: 0, B: 0 } }), null);
   // Not perverse: you don't like either side.
-  assert.equal(assessLoyalty(0.2, 0.1, "B", { A: 0.5, B: 0.1 }, { A: 0, B: 0 }), null);
+  assert.equal(assessLoyalty({ a: "X", b: "Y", wa: 0.2, wb: 0.1, best: "B",
+    pSeatA: { A: 0.5, B: 0.1 }, pSeatB: { A: 0, B: 0 } }), null);
   // Draw recommended against the liked side.
-  loy = assessLoyalty(0.8, 0.2, "D", { A: 0.10, B: 0.0, D: 0.12 }, { A: 0, B: 0, D: 0 });
-  assert.ok(loy.againstIsA);
+  loy = assessLoyalty({ a: "X", b: "Y", wa: 0.8, wb: 0.2, best: "D",
+    pSeatA: { A: 0.10, B: 0.0, D: 0.12 }, pSeatB: { A: 0, B: 0, D: 0 } });
+  assert.equal(loy.against, "X");
   assert.ok(Math.abs(loy.swing - 0.02) < 1e-9);
+});
+
+test("assessLoyalty: cross-team payoff rescues the call (kind=other)", () => {
+  const base = {
+    a: "Canada", b: "Bosnia", wa: 0.55, wb: 0.0, best: "D",
+    // The draw HURTS Canada's own odds...
+    pSeatA: { A: 0.48, D: 0.26, B: 0.10 },
+    pSeatB: { A: 0.02, D: 0.12, B: 0.33 },
+  };
+  // ...but lifts another liked team enough -> kept, with the beneficiary named.
+  let loy = assessLoyalty({ ...base, likedP: {
+    Canada: { A: 0.48, D: 0.26, B: 0.10 },
+    Switzerland: { A: 0.31, D: 0.43, B: 0.38 },
+  } });
+  assert.equal(loy.against, "Canada");
+  assert.equal(loy.kind, "other");
+  assert.equal(loy.beneficiary, "Switzerland");
+  assert.ok(Math.abs(loy.benSwing - 0.12) < 1e-9, `benSwing=${loy.benSwing}`);
+  assert.equal(loy.suppressible, false);
+  // The denied team itself never counts as its own beneficiary.
+  loy = assessLoyalty({ ...base, likedP: {
+    Canada: { A: 0.48, D: 0.26, B: 0.10 },
+  } });
+  assert.equal(loy.kind, "none");
+  assert.ok(loy.suppressible);
+  // Largest-gain liked team wins the beneficiary slot.
+  loy = assessLoyalty({ ...base, likedP: {
+    Switzerland: { A: 0.31, D: 0.43, B: 0.38 },
+    Qatar: { A: 0.10, D: 0.30, B: 0.10 },
+  } });
+  assert.equal(loy.beneficiary, "Qatar");
 });
 
 // --- cheer guide end-to-end ------------------------------------------------------------
@@ -295,6 +334,34 @@ test("analyzeCheer: USA fan attending Seattle wants USA to win its group games",
   const top10 = rows.slice(0, 10);
   assert.ok(top10.some((r) => r.a === "USA" || r.b === "USA"),
     "a USA game should be among the most impactful");
+});
+
+test("analyzeCheer: full-lineup optimization trades one liked team for a more-loved one", () => {
+  // Love Switzerland, like Canada (same group B), attend M85 (Vancouver:
+  // Group B winner vs a 3rd from E/F/G/I/J — so a Group B THIRD can't get
+  // there; only the group winner matters). Canada's own odds of reaching M85
+  // are maximized by Canada WINNING Canada-vs-Bosnia, but the guide must
+  // recommend the outcome that's best for the WHOLE lineup — the draw, which
+  // protects Switzerland's group-winner path. Stable at 5k sims across seeds.
+  const weights = { Switzerland: 1.0, Canada: 0.55 };
+  const { rows } = analyzeCheer(prep, noResults, store, weights, ["m85"]);
+  const r = rows.find((x) => x.id === "Canada|Bosnia-Herzegovina");
+  assert.ok(r, "Canada vs Bosnia-Herzegovina row exists");
+  // Canada's own appearance odds ARE maximized by a Canada win...
+  assert.ok(r.pSeatA.A > r.pSeatA.D && r.pSeatA.A > r.pSeatA.B,
+    "premise: Canada-win maximizes Canada's own odds");
+  // ...yet the recommendation weighs Switzerland too and picks the draw.
+  assert.equal(r.best, "D");
+  assert.ok(r.significant);
+  // The loyalty guard credits the cross-team payoff instead of suppressing.
+  assert.equal(r.loyalty.against, "Canada");
+  assert.equal(r.loyalty.kind, "other");
+  assert.equal(r.loyalty.beneficiary, "Switzerland");
+  assert.equal(r.loyalty.suppressible, false);
+  assert.ok(r.loyalty.benSwing > 0.03);
+  // And the per-team conditional probabilities are exposed for the UI.
+  assert.ok(r.pLineup.Switzerland.D > r.pLineup.Switzerland.A,
+    "draw must help Switzerland vs a Canada win");
 });
 
 test("analyzeCheer: attended group game contributes its fixed teams", () => {

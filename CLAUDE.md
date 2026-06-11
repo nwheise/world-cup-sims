@@ -19,10 +19,9 @@ start), zero group matches had been played** — the sim simulates all 72 group 
 
 | File | Purpose |
 |---|---|
-| `seattle_wc_sim_v2.py` | **Current simulator.** Official FIFA rules end to end. Run: `python3 seattle_wc_sim_v2.py [n_sims]` (default 20000, seed=42). Expects `annex_c.txt` in cwd. |
+| `seattle_wc_sim.py` | **Current simulator.** Official FIFA rules end to end. Run: `python3 seattle_wc_sim.py [n_sims]` (default 20000, seed=42). Expects `annex_c.txt` in cwd. (Implements the "v2" design: the real Annex C table + 2026 head-to-head-first tiebreakers — replacing an earlier random-valid-matching approximation with pre-2026 tiebreaker order that gave materially wrong third-place slot probabilities. That earlier version no longer exists on disk.) |
 | `annex_c.txt` | FIFA's official Annex C third-place allocation table — all 495 C(12,8) combinations. Transcribed from the published schedule (via Wikipedia's "2026 FIFA World Cup knockout stage" page, which reproduces the regulations). **Validated — do not regenerate or hand-edit without re-running the validator.** |
 | `validate_annex_c.py` | Structural validator for `annex_c.txt`. Checks: rows 1–495 present, every 8-of-12 combination appears exactly once, each row's 8 assignments are a permutation of its 8 qualified groups, every assignment respects the per-slot allowed-group sets. Last run: all checks pass. |
-| `seattle_wc_sim.py` (v1) | Deprecated. Used a random-valid-matching approximation for third-place allocation instead of the real Annex C table, and wrong (pre-2026) tiebreaker order. Kept only for reference; its third-place slot probabilities are materially wrong. |
 
 ## Verified tournament facts (do not re-derive; sourced and checked June 11, 2026)
 
@@ -74,7 +73,7 @@ encoded in `SLOT_TO_MATCH` in the simulator and in the validator's `ALLOWED` dic
 - Third-place teams are assigned to bracket slots by the **fixed Annex C lookup table** —
   no second draw, no discretion. R32 never rematches group-stage opponents.
 
-## Model details (`seattle_wc_sim_v2.py`)
+## Model details (`seattle_wc_sim.py`)
 
 - **Ratings** (`RATINGS` dict): FIFA points from the **April 1, 2026** release for the
   published top ~20; everything else is an estimate (marked in comments). Some values have

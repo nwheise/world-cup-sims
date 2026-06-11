@@ -99,10 +99,30 @@ def load_annex_c(path="annex_c.txt"):
 ANNEX_C = load_annex_c()
 
 # ---------------------------------------------------------------------------
+# MODELING ASSUMPTIONS (the numeric choices below and their provenance)
+# ---------------------------------------------------------------------------
+#  * BASE_GOALS = 2.7 is the avg *total* goals/match, an empirical figure from
+#    recent World Cups (2014: 2.67, 2018: 2.64, 2022: 2.69). It's split between
+#    the two teams as lambda_a = 2.7*E, lambda_b = 2.7*(1-E), so the expected
+#    total is ALWAYS 2.7 regardless of mismatch — the gap only changes the split,
+#    not the sum (so blowouts don't add extra goal variance).
+#  * expected_score is the Elo logistic. The divisor 600 (not chess Elo's 400)
+#    matches FIFA's own SUM ranking algorithm, so it's consistent with the FIFA
+#    points in RATINGS. Only rating *differences* matter — an additive constant
+#    across all teams cancels, so absolute values are irrelevant.
+#  * poisson() is Knuth's sampler. Each team's goals are independent Poisson;
+#    independence is a simplification (real scorelines are mildly correlated).
+#  * Knockout tiebreak 0.5 + 0.4*(E-0.5) is a hand-tuned ET/penalties proxy
+#    (caps the favorite at 70%); the 0.4 is not data-derived, low leverage.
+#  * Absent by design: NO host advantage for USA/MEX/CAN (likely understates
+#    USA's M94 odds); ratings are static (no injuries/momentum); cards/conduct
+#    are not simulated; RATINGS are Apr 2026 + estimates (the final June list
+#    has Argentina #1, not France).
+# ---------------------------------------------------------------------------
 # MATCH MODEL — Poisson goals scaled by Elo expectation (FIFA-style 600 scale)
 # ---------------------------------------------------------------------------
 
-BASE_GOALS = 2.7  # avg total goals per match
+BASE_GOALS = 2.7  # avg total goals per match (see MODELING ASSUMPTIONS above)
 
 
 def expected_score(r_a, r_b):

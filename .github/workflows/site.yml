@@ -14,10 +14,10 @@ on:
   push:
     branches: [main]
   schedule:
-    # Every 6 hours during the tournament (June 11 – July 19, 2026).
+    # Every 2 hours during the tournament (June 11 – July 19, 2026).
     # update_results.py becomes a no-op after Aug 1; feel free to delete the
     # schedule after the final.
-    - cron: "23 */6 * * *"
+    - cron: "23 */2 * * *"
   workflow_dispatch:
 
 permissions:

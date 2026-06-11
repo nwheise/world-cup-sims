@@ -155,8 +155,9 @@ function onWorkerMessage(ev) {
     S.simStatus = { state: "running", done: msg.done, total: msg.total };
     const line = `Simulating… ${Math.round(100 * msg.done / msg.total)}%`;
     for (const el of [sections.guide, sections.probs]) {
-      const p = el.querySelector("p.muted");
-      if (p && el.children.length === 1) p.textContent = line;
+      // Only touch a bare progress placeholder, never a rendered view.
+      const p = el.firstElementChild;
+      if (el.children.length === 1 && p?.matches("p.muted")) p.textContent = line;
     }
   } else if (msg.type === "simulated") {
     S.simStatus = { state: "done", done: msg.meta.nSims, total: msg.meta.nSims };

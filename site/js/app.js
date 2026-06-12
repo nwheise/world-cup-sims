@@ -293,8 +293,10 @@ async function boot() {
   for (const name of Object.keys(sections)) sections[name] = $(`#tab-${name}`);
   wireEvents();
 
+  // no-cache = always revalidate (cheap 304s via ETag) — the data must track
+  // the 2-hourly results refresh, not the CDN's 10-minute cache window.
   const [tournament, results] = await Promise.all([
-    fetch("data/tournament.json").then((r) => r.json()),
+    fetch("data/tournament.json", { cache: "no-cache" }).then((r) => r.json()),
     fetch("data/results.json", { cache: "no-cache" })
       .then((r) => r.json())
       .catch(() => ({ group_results: {}, knockout: {} })),

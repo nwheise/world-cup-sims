@@ -61,6 +61,18 @@ jobs:
           node --test "tests/**/*.test.mjs"
           python3 -m unittest test_update_results
 
+      - name: Stamp asset versions (cache busting)
+        # GitHub Pages caches assets for 10 minutes; without versioned URLs a
+        # deploy can leave browsers running a stale or mixed ES-module graph
+        # until users hard-clear the site (which wipes their localStorage).
+        # Suffixing every .js/.css reference with the commit SHA makes each
+        # deploy fetch atomically. Deploy-time only — repo files stay clean.
+        run: |
+          V="${GITHUB_SHA:0:8}"
+          sed -i "s/\.js\"/.js?v=$V\"/g; s/\.css\"/.css?v=$V\"/g" site/index.html
+          sed -i "s/\.js\"/.js?v=$V\"/g" site/js/*.js
+          grep -n "?v=$V" site/index.html >/dev/null  # fail loudly if nothing stamped
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3

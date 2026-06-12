@@ -41,14 +41,21 @@
         group tiebreakers, ranking of third-placed teams, and FIFA's real Annex C table
         (all 495 combinations) routing the best 8 thirds into the bracket.</li>
       <li><strong>Live results:</strong> actual scores are merged in as the tournament is
-        played (refreshed every few hours from the public-domain
-        <a href="https://github.com/openfootball/worldcup.json">openfootball</a> dataset);
-        the simulation only fills in what hasn't happened yet.</li>
+        played — refreshed every 2 hours from ESPN's public scoreboard (with the
+        public-domain <a href="https://github.com/openfootball/worldcup.json">openfootball</a>
+        dataset as a fallback). Played games are pinned as fact; the simulation only fills
+        in what hasn't happened yet, so every probability sharpens as the tournament goes.</li>
+      <li><strong>Your preferences:</strong> teams start ranked by strength (the default
+        assumption: you want to see the best teams); head-to-head picks personalize from
+        there, and ⭐ pinned teams are locked above everything else. "Lineup quality" is
+        the favorite-weighted appeal of the distinct teams you'd watch across your
+        matches.</li>
       <li><strong>Cheer guide:</strong> one big simulation records every game's outcome and
         who ends up in your attended matches; bucketing by outcome gives the causal effect
-        of each result on the expected (favorite-weighted) quality of your lineup. A
-        loyalty guard stops it from telling you to root against a team you love unless the
-        payoff is real.</li>
+        of each result on your expected lineup quality. A loyalty guard stops it from
+        telling you to root against a team you love unless the payoff is real (for that
+        team or another favorite) — and it will <em>never</em> tell you to cheer against a
+        team you've pinned.</li>
       <li><strong>Privacy:</strong> everything runs in your browser; your picks live in
         localStorage and never leave your device.</li>
     </ul>

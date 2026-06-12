@@ -650,6 +650,8 @@ export function renderProbs(S, el) {
   };
   const yourSection = (attendedKo.length || attendedGroup.length) ? `
     <h2>⭐ Your matches</h2>
+    <p class="muted small">The matches you've marked attending, pulled to the top. For who
+      to root for in each one, see the <a href="#guide">🎺 Cheer guide</a>.</p>
     <div class="grid">
       ${attendedGroup.map(groupGameCard).join("")}
       ${attendedKo.map((m) => koCard(m, m.num - 73)).join("")}
@@ -688,6 +690,9 @@ export function renderProbs(S, el) {
       <p class="muted small">${simStatusLine(S)} · seed ${S.meta.seed}</p>
       <p class="muted small">💡 In any match card below, tap one team on each side
       (the ◌ dots) to see the odds of that exact matchup.</p>
+      ${!S.attended.size ? `<p class="muted small">🎟️ Going to games in person? Mark them in
+      <a href="#matches">My matches</a> to pin them to the top here and unlock a personal
+      <a href="#guide">cheer guide</a>.</p>` : ""}
     </div>
     ${yourSection}
     <h2>Champion odds</h2>

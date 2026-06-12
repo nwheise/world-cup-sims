@@ -123,7 +123,7 @@ function renderAll() {
 }
 
 function setTab(tab) {
-  if (!sections[tab]) tab = "guide";
+  if (!sections[tab]) tab = "path";
   for (const [name, el] of Object.entries(sections)) {
     el.hidden = name !== tab;
     $(`nav [data-tab="${name}"]`)?.classList.toggle("active", name === tab);
@@ -383,7 +383,7 @@ async function boot() {
   computePool();
   computePrefs();
   renderAll();
-  setTab(location.hash.slice(1) || "guide");
+  setTab(location.hash.slice(1) || "path");
 
   worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
   worker.onmessage = onWorkerMessage;

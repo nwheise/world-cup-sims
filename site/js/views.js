@@ -666,14 +666,6 @@ export function renderProbs(S, el) {
   el.innerHTML = `
     <div class="card summary">
       <p class="muted small">${simStatusLine(S)} · seed ${S.meta.seed}</p>
-      <div class="toolbar">
-        <label>Simulations:
-          <select id="nsims">
-            ${[10000, 20000, 50000].map((n) =>
-              `<option value="${n}" ${n === S.settings.nSims ? "selected" : ""}>${n.toLocaleString()}</option>`).join("")}
-          </select>
-        </label>
-      </div>
       <p class="muted small">💡 In any match card below, tap one team on each side
       (the ◌ dots) to see the odds of that exact matchup.</p>
     </div>

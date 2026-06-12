@@ -38,7 +38,7 @@ const S = {
   comparisons: load(LS.comparisons, []),
   attended: new Set(load(LS.attended, [])),
   pinned: new Set(load(LS.pinned, [])),
-  settings: { nSims: 20000, ...load(LS.settings, {}) },
+  settings: { ...load(LS.settings, {}), nSims: 100000 },
   fanTeam: load(LS.fanTeam, null),
   pathAnalysis: null, pathSort: "date",
   pool: [], weights: {}, counts: new Map(), currentPair: null,
@@ -335,10 +335,6 @@ function wireEvents() {
     } else if (t.id === "venue-filter") {
       S.venueFilter = t.value;
       renderMatches(S, sections.matches);
-    } else if (t.id === "nsims") {
-      S.settings.nSims = +t.value;
-      save(LS.settings, S.settings);
-      startSimulation();
     }
   });
 

@@ -56,7 +56,7 @@ self.onmessage = (ev) => {
   } else if (msg.type === "analyze") {
     if (!store) return;
     const { rows, summary } = analyzeCheer(
-      prep, fixed, store, msg.weights, msg.attended);
+      prep, fixed, store, msg.weights, msg.attended, { pinned: msg.pinned });
     self.postMessage({ type: "analysis", reqId: msg.reqId, rows, summary });
   }
 };

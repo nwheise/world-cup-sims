@@ -10,7 +10,8 @@
  */
 
 import { prepare, rankGroup } from "./sim-core.js";
-import { computeScores, computeCounts, computeWeights, applyPins, pickPair } from "./prefs.js";
+import { computeScores, computeCounts, computeWeights, applyPins, pickPair,
+         ratingPriors } from "./prefs.js";
 import { displayName } from "./format.js";
 import { renderCheer, renderMatches, renderTeams, renderProbs } from "./views.js";
 
@@ -90,7 +91,8 @@ function computePool() {
 }
 
 function computePrefs() {
-  const scores = computeScores(S.pool, S.comparisons);
+  // Strength priors: before any picks, the default is "see the best teams".
+  const scores = computeScores(S.pool, S.comparisons, ratingPriors(S.ratings));
   S.counts = computeCounts(S.pool, S.comparisons);
   // Pinned favorites are locked at 1.0 and everything unpinned is compressed
   // below them — a pin must always outrank the head-to-head ranking.
@@ -145,12 +147,15 @@ let analyzeTimer = null;
 function scheduleAnalyze() {
   if (analyzeTimer) clearTimeout(analyzeTimer);
   analyzeTimer = setTimeout(() => {
-    if (S.simStatus.state !== "done" || !S.comparisons.length || !S.attended.size) return;
+    // Strength priors mean weights are meaningful even with zero picks —
+    // only attended matches are required.
+    if (S.simStatus.state !== "done" || !S.attended.size) return;
     S.lastReqId += 1;
     worker.postMessage({
       type: "analyze",
       weights: S.weights,
       attended: [...S.attended],
+      pinned: [...S.pinned],
       reqId: S.lastReqId,
     });
   }, 200);

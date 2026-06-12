@@ -20,7 +20,7 @@ import {
 } from "../site/js/sim-core.js";
 import {
   computeScores, computeCounts, computeWeights, applyPins, pickPair,
-  UNPINNED_CAP,
+  ratingPriors, UNPINNED_CAP, INIT_ELO, PRIOR_SPREAD,
 } from "../site/js/prefs.js";
 
 const tournament = JSON.parse(readFileSync(new URL("../site/data/tournament.json", import.meta.url)));
@@ -292,6 +292,24 @@ test("computeScores: equal-preference entries pull scores together", () => {
   assert.equal(counts.get("B"), 1);
 });
 
+test("ratingPriors: zero picks already prefers stronger teams, but picks can flip it", () => {
+  const priors = ratingPriors(tournament.ratings);
+  // compressed band around INIT_ELO, strongest at the top
+  assert.ok(Math.abs(priors.get("France") - (INIT_ELO + PRIOR_SPREAD / 2)) < 1e-9);
+  assert.ok(Math.abs(priors.get("Haiti") - (INIT_ELO - PRIOR_SPREAD / 2)) < 1e-9);
+  assert.ok(priors.get("Brazil") > priors.get("Iran"));
+  // with NO picks, weights follow strength (France 1.0 ... Haiti 0.0)
+  const pool = ["France", "Brazil", "Iran", "Haiti"];
+  let weights = computeWeights(computeScores(pool, [], priors));
+  assert.equal(weights.France, 1);
+  assert.equal(weights.Haiti, 0);
+  assert.ok(weights.Brazil > weights.Iran);
+  // repeated picks drag a weak team past a nearby strong one
+  const picks = Array.from({ length: 6 }, () => ["Iran", "Brazil"]);
+  weights = computeWeights(computeScores(pool, picks, priors));
+  assert.ok(weights.Iran > weights.Brazil, "6 picks should overcome the prior gap");
+});
+
 test("applyPins: pinned teams strictly outrank every unpinned team", () => {
   // No pins -> untouched (the head-to-head top keeps weight 1.0).
   let w = applyPins({ A: 1.0, B: 0.7, C: 0.0 }, new Set());
@@ -438,6 +456,31 @@ test("loyalty percentages are true conditional probabilities (bucket == pinned r
   // And the headline effect itself: losing ~triples Mexico's Seattle odds.
   assert.ok(r.pSeatA.B > 2 * r.pSeatA.A,
     `losing must dwarf winning: ${r.pSeatA.A} -> ${r.pSeatA.B}`);
+});
+
+test("analyzeCheer: never advises cheering against a pinned team", () => {
+  // The verified perverse case: utility-max says root for South Africa so
+  // Mexico drops to 3rd (and rides Annex C to Seattle). With Mexico PINNED,
+  // the headline must flip to Mexico's win, with the honest cost attached.
+  const weights = { Mexico: 1.0 };
+  const without = analyzeCheer(prep, noResults, store, weights, ["m82", "m94"]);
+  const rw = without.rows.find((x) => x.id === "Mexico|South Africa");
+  assert.equal(rw.best, "B", "premise: unpinned math roots against Mexico");
+  assert.equal(rw.loyalty?.kind, "self");
+  assert.equal(rw.pinnedOverride, null);
+
+  const pinned = analyzeCheer(prep, noResults, store, weights, ["m82", "m94"],
+                              { pinned: ["Mexico"] });
+  const rp = pinned.rows.find((x) => x.id === "Mexico|South Africa");
+  assert.equal(rp.best, "A", "headline flips to Mexico's win");
+  assert.equal(rp.loyalty, null, "perverse warning replaced by the pinned note");
+  assert.equal(rp.pinnedOverride.against, "Mexico");
+  assert.equal(rp.pinnedOverride.mathBest, "B");
+  // the honest numbers survive: losing really is their better Seattle path
+  assert.ok(rp.pinnedOverride.pRec > rp.pinnedOverride.pWin);
+  // rooting FOR an (unpinned) favorite is never touched by the override
+  const usaRow = pinned.rows.find((x) => x.a === "USA" || x.b === "USA");
+  assert.equal(usaRow.pinnedOverride, null);
 });
 
 test("analyzeCheer: full-lineup optimization trades one liked team for a more-loved one", () => {

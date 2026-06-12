@@ -21,7 +21,7 @@ test suite (see "Key findings").
 | `site/index.html`, `site/css/style.css` | Single-page app shell + styles (dark, mobile-friendly, no framework). |
 | `site/js/sim-core.js` | **The simulator + analysis engine** (pure ESM — identical in the Web Worker and under node tests). Official FIFA 2026 rules end to end; simulates all 104 matches, honoring real results (`prepareResults`): played group games pinned, known knockout winners honored when they match the simulated lineup. Packs per-sim records (~216 bytes: 72 group outcomes, 48 group positions, 64 knockout participants, 32 winners) so re-analysis never re-simulates. Hosts `appearanceProbs` (per-slot + full joint matchup distributions + champion), `groupProbs`, `analyzeCheer` (cheer guide incl. loyalty guard, per-liked-team conditionals, top-picks summary), `assessLoyalty`, `emphasize`. Constants: `EMPHASIS=2.0`, `LIKE_FLOOR=0.5`, `SWING_THRESHOLD=0.03`, seed 42, default 20k sims. |
 | `site/js/worker.js` | Web Worker wrapper: `simulate` once (progress events), then `analyze` requests (weights + attended matches) are instant re-aggregations. |
-| `site/js/prefs.js` | Head-to-head preference ranking (Elo replay over the pick history): `computeScores` (supports `[a,b,"="]` equal-preference entries scored as draws), `computeWeights` (min-max to [0,1]), `applyPins` (pinned favorites locked at 1.0, unpinned compressed below `UNPINNED_CAP=0.85`), `pickPair` (adaptive most-informative pairing). |
+| `site/js/prefs.js` | Head-to-head preference ranking (Elo replay over the pick history): `computeScores` (supports `[a,b,"="]` equal-preference entries scored as draws, and optional priors), `ratingPriors` (FIFA ratings compressed into `INIT_ELO ± PRIOR_SPREAD/2 = ±150` — zero picks already means "best teams first", ~6 picks flip any prior gap), `computeWeights` (min-max to [0,1]), `applyPins` (pinned favorites locked at 1.0, unpinned compressed below `UNPINNED_CAP=0.85`), `pickPair` (adaptive most-informative pairing). |
 | `site/js/views.js`, `site/js/app.js`, `site/js/format.js` | Rendering (pure state→HTML), state/persistence/worker wiring (localStorage keys `wc26:comparisons`, `wc26:attended`, `wc26:pinned`, `wc26:settings`), and display helpers (names/flags, venue-local kickoff times, viewer-local timestamps, slot descriptions). |
 | `site/data/tournament.json` | **Static facts** (committed): groups, ratings, all 104 matches with kickoffs/venues/slot codes, Annex C. Regenerate via `build_data.py` only if FIFA reschedules or ratings are refreshed. |
 | `site/data/results.json` | **Live results** (committed, refreshed by the cron): `group_results` keyed `"TeamA\|TeamB"` (90-min scores), `knockout` keyed `m73..m104` (participants once known; score + winner once played). |
@@ -146,8 +146,10 @@ no-results baseline.)
   utility. Valid as a causal effect because games are independent given ratings — verified
   by a test asserting bucketed conditionals equal fresh pinned-result runs. A 3σ noise
   floor hides games swamped by sampling error.
-- **Weights**: min-max-normalized Elo from head-to-head picks (`prefs.js`), ties supported;
-  pinned favorites locked at 1.0 with everything unpinned compressed below 0.85.
+- **Weights**: min-max-normalized Elo from head-to-head picks (`prefs.js`), seeded with
+  strength priors (default = "see the best teams", so the guide works with zero picks),
+  ties supported; pinned favorites locked at 1.0 with everything unpinned compressed
+  below 0.85.
 - **Loyalty guard** (`assessLoyalty`): when the utility-max advice roots *against* a team
   you like (weight ≥ `LIKE_FLOOR`), the call is kept only if SOME liked team gains ≥
   `SWING_THRESHOLD` between the recommended result and the denied team's own win:
@@ -156,6 +158,11 @@ no-results baseline.)
   cross-team case was missed by the original Seattle-only guard), or `kind="none"` →
   demoted to a "loyalty notes" footnote. Per-liked-team conditionals (`pLineup`) are
   exposed per row and rendered as the "how this result moves your teams" table.
+- **Pinned override**: the guide NEVER advises rooting against a pinned team, regardless
+  of utility. When the math-best outcome would deny a pin, the headline flips to that
+  team's win and the row carries `pinnedOverride` ({mathBest, against, pWin, pRec}) —
+  rendered as an honest "their odds are better if they lose, but that's not what being a
+  fan is about" note (worker passes the pinned list via `opts.pinned`).
 
 ## Provenance / trust notes
 

@@ -50,21 +50,23 @@ const matchChip = (m) =>
 // ---------------------------------------------------------------------------
 
 export function renderCheer(S, el) {
-  const haveTeams = S.comparisons.length > 0;
+  const haveTeams = S.comparisons.length > 0 || S.pinned.size > 0;
   const haveMatches = S.attended.size > 0;
 
-  if (!haveTeams || !haveMatches) {
+  if (!haveMatches) {
     el.innerHTML = `
       <div class="onboard">
         <h2>Get your personal cheering guide</h2>
         <ol>
-          <li class="${haveMatches ? "done" : ""}">
+          <li>
             <strong>Pick the matches you're attending</strong> — the guide optimizes
             who you'll see in person.
-            <button class="btn" data-goto="matches">My matches ${haveMatches ? "✓" : "→"}</button>
+            <button class="btn" data-goto="matches">My matches →</button>
           </li>
           <li class="${haveTeams ? "done" : ""}">
-            <strong>Rank the teams you want to see</strong> — quick head-to-head picks.
+            <strong>Personalize your teams</strong> (optional) — quick head-to-head
+            picks and ⭐ pins. Until then we assume you want to see the strongest
+            teams.
             <button class="btn" data-goto="teams">My teams ${haveTeams ? "✓" : "→"}</button>
           </li>
         </ol>
@@ -124,6 +126,16 @@ export function renderCheer(S, el) {
       <strong>${pct(L.pRec)}</strong> with this result, vs only ${pct(L.pWin)} if they
       won (+${Math.round(L.swing * 100)}pp).</p>`;
     }
+    if (r.pinnedOverride) {
+      const po = r.pinnedOverride;
+      const alt = po.mathBest === "D" ? "with a draw" : "if they lose";
+      loy = `
+      <p class="pinned-note">⭐ You pinned ${teamLabel(po.against)}, so we'll never tell
+      you to cheer against them. Full honesty: their chance of playing in front of you
+      is ${pct(po.pRec)} ${alt} vs ${pct(po.pWin)} if they win — but rooting against
+      your own team isn't what being a fan is about.
+      Go ${esc(displayName(po.against))}!</p>`;
+    }
     const lineupTable = pLineupTable(r);
     return `
       <article class="card cheer-card">
@@ -157,7 +169,10 @@ export function renderCheer(S, el) {
       <strong>lineup quality</strong>: how much you'll like the teams you end up
       watching live, favorites counting extra (0 = none of your teams show up;
       1.0 ≈ one absolute favorite on the pitch).</p>
-      ${spread < 0.05 ? `<p class="warn">Your preferences are nearly flat — make more
+      ${!haveTeams ? `<p class="warn">Using <strong>default preferences</strong>
+        (stronger teams ranked higher). Make picks or ⭐ pin favorites in
+        <a href="#teams">My teams</a> to personalize.</p>`
+      : spread < 0.05 ? `<p class="warn">Your preferences are nearly flat — make more
         picks in <a href="#teams">My teams</a> for a sharper guide.</p>` : ""}
       <p class="muted small">${simStatusLine(S)}</p>
     </div>
@@ -292,6 +307,9 @@ export function renderTeams(S, el) {
       <p>Which of these two would you <strong>rather see play live</strong>?
       Tap your preferred team — every pick sharpens your ranking. Stop whenever
       you like.</p>
+      <p class="muted small">Teams start ranked by strength (the default
+      assumption: you'd rather see the best teams). Your picks and ⭐ pins
+      personalize from there.</p>
       <p class="muted small">${poolNote} ${S.comparisons.length} picks so far.</p>
       ${pair ? `
         <div class="duel">

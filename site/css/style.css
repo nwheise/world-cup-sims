@@ -101,6 +101,7 @@ select {
 .cheer-impact { display: flex; align-items: center; font-size: 0.8rem; }
 .cheer-impact .bar { margin-left: 0; width: 160px; }
 .loyalty { color: var(--warn); font-size: 0.9rem; margin: 6px 0 0; }
+.pinned-note { color: var(--accent); font-size: 0.9rem; margin: 6px 0 0; }
 .lineup-detail { margin-top: 6px; }
 .lineup-detail summary { cursor: pointer; }
 .lineup-table { border-collapse: collapse; font-size: 0.82rem; margin-top: 6px; }

@@ -19,13 +19,35 @@ function expected(sa, sb) {
   return 1.0 / (1.0 + Math.pow(10, (sb - sa) / ELO_SCALE));
 }
 
+/** Strength priors are compressed into INIT_ELO ± PRIOR_SPREAD/2, so the
+ *  default order is "best teams first" but a handful of head-to-head picks
+ *  can still drag any team across the field (one pick moves ~32 points). */
+export const PRIOR_SPREAD = 300;
+
+/**
+ * Map team-strength ratings (FIFA points) onto preference-Elo priors:
+ * min-max compressed into [INIT_ELO - PRIOR_SPREAD/2, INIT_ELO + PRIOR_SPREAD/2].
+ * Default assumption: with no picks yet, you'd rather see stronger teams.
+ */
+export function ratingPriors(ratings) {
+  const vals = Object.values(ratings);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const priors = new Map();
+  for (const [t, r] of Object.entries(ratings)) {
+    const z = hi - lo < 1e-9 ? 0.5 : (r - lo) / (hi - lo);
+    priors.set(t, INIT_ELO + PRIOR_SPREAD * (z - 0.5));
+  }
+  return priors;
+}
+
 /**
  * Replay every pick as an Elo update over `pool` teams. Entries are
  * [winner, loser] for a preference, or [a, b, "="] for declared equal
  * preference (scored as a draw: both pulled toward each other).
+ * `priors` (optional Map) seeds each team's starting score.
  */
-export function computeScores(pool, comparisons) {
-  const scores = new Map(pool.map((t) => [t, INIT_ELO]));
+export function computeScores(pool, comparisons, priors = null) {
+  const scores = new Map(pool.map((t) => [t, priors?.get(t) ?? INIT_ELO]));
   for (const [a, b, flag] of comparisons) {
     if (!scores.has(a) || !scores.has(b)) continue; // team outside current pool
     const ea = expected(scores.get(a), scores.get(b));

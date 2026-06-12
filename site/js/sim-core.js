@@ -419,6 +419,7 @@ export function assessLoyalty({ a, b, wa, wb, best, pSeatA, pSeatB,
 export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}) {
   const gamma = opts.emphasis ?? EMPHASIS;
   const likeFloor = opts.likeFloor ?? LIKE_FLOOR;
+  const pinnedSet = new Set(opts.pinned ?? []);
   const { n, outcomes, koTeams } = store;
   const nt = prep.teams.length;
 
@@ -526,15 +527,30 @@ export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}
     const se = varU > 0
       ? Math.sqrt(varU * (1 / counts[best] + 1 / counts[worst])) : 0;
     const a = prep.teams[aIdx], b = prep.teams[bIdx];
-    const loyalty = assessLoyalty({
+    let loyalty = assessLoyalty({
       a, b,
       wa: weights[a] ?? 0.0, wb: weights[b] ?? 0.0,
       best, pSeatA, pSeatB, likedP: pLineup,
     }, opts);
+    // Pinned teams are sacred: we NEVER advise cheering against one, no
+    // matter what the utility math says. Flip the headline to their win and
+    // surface the honest cost as a note instead of a recommendation.
+    let pinnedOverride = null;
+    if (loyalty && pinnedSet.has(loyalty.against)) {
+      const oWin = loyalty.against === a ? "A" : "B";
+      pinnedOverride = {
+        mathBest: best,
+        against: loyalty.against,
+        pWin: loyalty.pWin,   // P(in your lineup | they win)
+        pRec: loyalty.pRec,   // P(in your lineup | the math's preferred result)
+      };
+      best = oWin;
+      loyalty = null;
+    }
     return {
       kind, id, a, b,
       means, counts, best, impact, significant: impact > 3 * se,
-      pSeatA, pSeatB, pLineup, loyalty, ...extra,
+      pSeatA, pSeatB, pLineup, loyalty, pinnedOverride, ...extra,
     };
   };
 

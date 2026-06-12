@@ -80,22 +80,6 @@ function computeStandings() {
   S.standings = standings;
 }
 
-/** Teams that can still reach at least one attended match (else everyone). */
-function computePool() {
-  const all = Object.keys(S.ratings).sort();
-  if (!S.attended.size || !S.probs) { S.pool = all; return; }
-  const reachable = new Set();
-  for (const id of S.attended) {
-    const g = S.groupById.get(id);
-    if (g) { reachable.add(g.a); reachable.add(g.b); continue; }
-    const ko = S.koById.get(id);
-    if (!ko) continue;
-    const probs = S.probs.matches[ko.num - 73];
-    for (const [t, p] of [...probs.slot1, ...probs.slot2]) if (p > 0) reachable.add(t);
-  }
-  S.pool = reachable.size >= 2 ? [...reachable].sort() : all;
-}
-
 function computePrefs() {
   // Strength priors: before any picks, the default is "see the best teams".
   const scores = computeScores(S.pool, S.comparisons, ratingPriors(S.ratings));
@@ -104,14 +88,16 @@ function computePrefs() {
   // below them — a pin must always outrank the head-to-head ranking.
   S.weights = applyPins(computeWeights(scores), S.pinned);
   if (!S.currentPair || !S.currentPair.every((t) => S.pool.includes(t))) {
-    S.currentPair = pickPair(S.pool, scores, S.counts, S.currentPair);
+    S.currentPair = pickPair(S.pool, scores, S.counts, S.currentPair,
+                             Math.random, S.comparisons);
   }
 }
 
 function nextPair(avoid) {
-  const scores = computeScores(S.pool, S.comparisons);
+  const scores = computeScores(S.pool, S.comparisons, ratingPriors(S.ratings));
   S.counts = computeCounts(S.pool, S.comparisons);
-  S.currentPair = pickPair(S.pool, scores, S.counts, avoid);
+  S.currentPair = pickPair(S.pool, scores, S.counts, avoid,
+                           Math.random, S.comparisons);
 }
 
 // --- rendering -----------------------------------------------------------------
@@ -205,8 +191,6 @@ function onWorkerMessage(ev) {
     S.probs = msg.probs;
     S.groupProbs = msg.groupProbs;
     S.meta = msg.meta;
-    computePool();
-    computePrefs();
     renderAll();
     scheduleAnalyze();
     schedulePathAnalyze();
@@ -257,8 +241,6 @@ function downloadICS({ tier, matchId }) {
 
 function onAttendedChanged() {
   save(LS.attended, [...S.attended]);
-  computePool();
-  computePrefs();
   S.analysis = null;
   renderAll();
   scheduleAnalyze();
@@ -403,6 +385,9 @@ async function boot() {
   S.tournament = tournament;
   S.results = results;
   S.ratings = tournament.ratings;
+  // The ranking pool is always all 48 teams — preferences feed every tab
+  // (must-watch, cheer guide), not just attended matches.
+  S.pool = Object.keys(S.ratings).sort();
   S.prep = prepare(tournament);
   S.playedCount = Object.keys(results.group_results || {}).length;
 
@@ -417,7 +402,6 @@ async function boot() {
   }
 
   computeStandings();
-  computePool();
   computePrefs();
   renderAll();
   setTab(location.hash.slice(1) || "path");

@@ -327,9 +327,8 @@ export function renderMatches(S, el) {
 
 export function renderTeams(S, el) {
   const pair = S.currentPair;
-  const poolNote = S.attended.size
-    ? `Ranking the <strong>${S.pool.length}</strong> teams that can still reach your selected matches.`
-    : `Ranking all <strong>${S.pool.length}</strong> teams — select your matches to narrow the pool.`;
+  const poolNote = `Ranking all <strong>${S.pool.length}</strong> teams — each
+    pairing is chosen to teach the ranking the most.`;
 
   const ranking = S.pool
     .map((t) => ({ t, w: S.weights[t] ?? 0.5, c: S.counts.get(t) ?? 0,

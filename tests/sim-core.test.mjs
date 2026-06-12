@@ -274,6 +274,33 @@ test("prefs: Elo replay, weights, pair picking", () => {
   assert.ok(pair.includes("D"), "least-compared team should be in the next pair");
 });
 
+test("pickPair: maximizes information (entropy x uncertainty, repeats demoted)", () => {
+  const rnd = makeRng(7);
+  const pool = ["A", "B", "C"];
+  const scores = new Map([["A", 1800], ["B", 1502], ["C", 1498]]);
+  const even = new Map([["A", 2], ["B", 2], ["C", 2]]);
+  for (let i = 0; i < 25; i++) {
+    // Equal counts: the near-coin-flip question (B vs C) is the informative
+    // one; A is settled 300 points above both.
+    const pair = pickPair(pool, scores, even, null, rnd);
+    assert.deepEqual([...pair].sort(), ["B", "C"]);
+    // ...but once B-vs-C has been asked twice, the picker moves on.
+    const again = pickPair(pool, scores, even, null, rnd, [["B", "C"], ["C", "B"]]);
+    assert.ok(again.includes("A"), `repeat-asked pair should be demoted, got ${again}`);
+    // An unrated team is the biggest unknown: it gets the next question even
+    // against far-apart opponents.
+    const lopsided = new Map([["A", 0], ["B", 5], ["C", 5]]);
+    const fresh = pickPair(pool, scores, lopsided, null, rnd);
+    assert.ok(fresh.includes("A"), "uncompared team should be offered");
+    // `avoid` blocks an immediate repeat of the last pair.
+    const avoided = pickPair(pool, scores, even, ["B", "C"], rnd);
+    assert.ok(avoided.includes("A"), "avoided pair must not repeat immediately");
+  }
+  // Pool of 2: the only pair comes back even when avoided.
+  const two = pickPair(["A", "B"], scores, even, ["A", "B"], rnd);
+  assert.deepEqual([...two].sort(), ["A", "B"]);
+});
+
 test("computeScores: equal-preference entries pull scores together", () => {
   const pool = ["A", "B"];
   // A tie between fresh teams changes nothing.

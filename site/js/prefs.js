@@ -95,23 +95,57 @@ export function applyPins(weights, pinned, cap = UNPINNED_CAP) {
   return weights;
 }
 
+/** Binary entropy of the predicted pick outcome — peaks at scores equal. */
+function entropy(p) {
+  if (p <= 0 || p >= 1) return 0;
+  return -(p * Math.log2(p) + (1 - p) * Math.log2(1 - p));
+}
+
+/** Candidates within this fraction of the top information score are drawn
+ *  from uniformly — near-optimal pairs only, but no two sessions ask the
+ *  exact same sequence. */
+export const NEAR_BEST = 0.9;
+
+const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
 /**
- * Most-informative next pairing: a least-compared team vs. its nearest rival
- * by current score. `avoid` (a 2-element array/set of names) prevents an
- * immediate repeat. `rnd` defaults to Math.random (no reproducibility needed
- * for an interactive picker).
+ * Most-informative next pairing, scored over EVERY pair in the pool (48
+ * teams = 1128 pairs — trivial to scan per pick). A comparison teaches the
+ * most when (a) its outcome is uncertain — scores close, so high outcome
+ * entropy — and (b) the teams are still poorly located — few picks, so a
+ * result moves them far. Information score:
+ *
+ *   info(a,b) = (1/(1+count_a) + 1/(1+count_b)) · H(E_ab) / (1 + timesAsked)
+ *
+ * The repeat divisor (from `comparisons`) keeps the picker from re-asking a
+ * settled question. `avoid` prevents an immediate repeat of the last pair.
+ * `rnd` defaults to Math.random (no reproducibility needed interactively).
  */
-export function pickPair(pool, scores, counts, avoid = null, rnd = Math.random) {
+export function pickPair(pool, scores, counts, avoid = null, rnd = Math.random,
+                         comparisons = []) {
   if (pool.length < 2) return null;
-  const fewest = Math.min(...pool.map((t) => counts.get(t) ?? 0));
-  const candidates = pool.filter((t) => (counts.get(t) ?? 0) === fewest);
-  const a = candidates[Math.floor(rnd() * candidates.length)];
-  const others = pool.filter((t) => t !== a).sort((x, y) =>
-    (Math.abs(scores.get(x) - scores.get(a)) - Math.abs(scores.get(y) - scores.get(a))) ||
-    ((counts.get(x) ?? 0) - (counts.get(y) ?? 0)));
-  let b = others[0];
+  const asked = new Map();
+  for (const [a, b] of comparisons) {
+    const k = pairKey(a, b);
+    asked.set(k, (asked.get(k) ?? 0) + 1);
+  }
   const avoidSet = avoid ? new Set(avoid) : null;
-  if (avoidSet && avoidSet.has(a) && avoidSet.has(b) && others.length > 1) b = others[1];
+  const cand = [];
+  for (let i = 0; i < pool.length; i++) {
+    for (let j = i + 1; j < pool.length; j++) {
+      const a = pool[i], b = pool[j];
+      if (avoidSet && avoidSet.has(a) && avoidSet.has(b)) continue;
+      const unc = 1 / (1 + (counts.get(a) ?? 0)) + 1 / (1 + (counts.get(b) ?? 0));
+      const ent = entropy(expected(scores.get(a), scores.get(b)));
+      const rep = asked.get(pairKey(a, b)) ?? 0;
+      cand.push({ a, b, info: (unc * ent) / (1 + rep) });
+    }
+  }
+  // Pool of 2 with that pair avoided: nothing else to ask — repeat it.
+  if (!cand.length) return rnd() < 0.5 ? [pool[0], pool[1]] : [pool[1], pool[0]];
+  const best = Math.max(...cand.map((c) => c.info));
+  const near = cand.filter((c) => c.info >= best * NEAR_BEST);
+  const { a, b } = near[Math.floor(rnd() * near.length)];
   // Randomize sides to avoid position bias.
   return rnd() < 0.5 ? [a, b] : [b, a];
 }

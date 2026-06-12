@@ -122,13 +122,25 @@ function renderAll() {
   renderProbs(S, sections.probs);
 }
 
+const ATTEND_TABS = new Set(["matches", "teams", "guide"]);
+
 function setTab(tab) {
   if (!sections[tab]) tab = "path";
   for (const [name, el] of Object.entries(sections)) {
     el.hidden = name !== tab;
     $(`nav [data-tab="${name}"]`)?.classList.toggle("active", name === tab);
   }
+  // Light up the "Attending a match?" disclosure whenever one of its tabs is
+  // current, so the collapsed group still signals where you are.
+  $("[data-nav-toggle]")?.classList.toggle("active", ATTEND_TABS.has(tab));
   if (location.hash !== `#${tab}`) history.replaceState(null, "", `#${tab}`);
+}
+
+function setNavMenu(open) {
+  const menu = $("#attend-menu");
+  if (!menu) return;
+  menu.hidden = !open;
+  $("[data-nav-toggle]")?.setAttribute("aria-expanded", String(open));
 }
 
 // --- worker -----------------------------------------------------------------------
@@ -238,9 +250,13 @@ function onAttendedChanged() {
 
 function wireEvents() {
   document.addEventListener("click", (ev) => {
-    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-share],[data-info],[data-info-close]");
+    // Any click outside the disclosure closes it (the toggle itself is inside
+    // #attend-group, so it's handled below, not here).
+    if (!$("#attend-menu")?.hidden && !ev.target.closest("#attend-group")) setNavMenu(false);
+    const t = ev.target.closest("[data-tab],[data-goto],[data-nav-toggle],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-share],[data-info],[data-info-close]");
     if (!t) return;
-    if (t.dataset.tab) setTab(t.dataset.tab);
+    if (t.dataset.navToggle !== undefined) setNavMenu($("#attend-menu")?.hidden);
+    else if (t.dataset.tab) { setTab(t.dataset.tab); setNavMenu(false); }
     else if (t.dataset.goto) setTab(t.dataset.goto);
     else if (t.dataset.pick) {
       S.comparisons.push([t.dataset.pick, t.dataset.loser]);
@@ -344,6 +360,10 @@ function wireEvents() {
       S.venueFilter = t.value;
       renderMatches(S, sections.matches);
     }
+  });
+
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !$("#attend-menu")?.hidden) setNavMenu(false);
   });
 
   window.addEventListener("hashchange", () => setTab(location.hash.slice(1)));

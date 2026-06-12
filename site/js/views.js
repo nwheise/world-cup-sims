@@ -424,7 +424,7 @@ export function renderPath(S, el) {
   const picker = `
     <div class="card">
       <p>Follow <strong>one team</strong> through the whole tournament: for every
-      remaining game — including other groups — see which result most extends
+      remaining game, including other groups, see which result most extends
       <em>their</em> run, from group survival to bracket slots with the friendliest
       opponents.</p>
       <label>Following:

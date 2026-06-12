@@ -14,10 +14,13 @@ on:
   push:
     branches: [main]
   schedule:
-    # Every 2 hours during the tournament (June 11 – July 19, 2026).
-    # update_results.py becomes a no-op after Aug 1; feel free to delete the
-    # schedule after the final.
-    - cron: "23 */2 * * *"
+    # Hourly during the tournament (June 11 – July 19, 2026). GitHub cron is
+    # best-effort — firings are routinely 30-90 min late or skipped under
+    # load (observed June 11) — so hourly slots keep the effective refresh
+    # near the intended cadence. Unchanged-result runs cost ~35s and commit
+    # nothing. update_results.py becomes a no-op after Aug 1; feel free to
+    # delete the schedule after the final.
+    - cron: "23 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -72,6 +75,26 @@ jobs:
           sed -i "s/\.js\"/.js?v=$V\"/g; s/\.css\"/.css?v=$V\"/g" site/index.html
           sed -i "s/\.js\"/.js?v=$V\"/g" site/js/*.js
           grep -n "?v=$V" site/index.html >/dev/null  # fail loudly if nothing stamped
+
+      - name: Stamp last-checked time (deploy-time only)
+        # The committed results.json deliberately keeps its fetched_at until
+        # scores actually change (no junk commits). checked_at goes into the
+        # DEPLOYED copy only — like the cache-bust step above, the repo file
+        # stays clean — so the site can honestly show when the live feed was
+        # last consulted. Skipped on push deploys (no feed check happened);
+        # the UI falls back to fetched_at alone.
+        if: github.event_name != 'push'
+        run: |
+          python3 - <<'EOF'
+          import json, datetime
+          path = "site/data/results.json"
+          with open(path) as f:
+              data = json.load(f)
+          data["checked_at"] = datetime.datetime.now(datetime.timezone.utc) \
+              .strftime("%Y-%m-%dT%H:%M:%SZ")
+          with open(path, "w") as f:
+              json.dump(data, f, indent=1, sort_keys=True)
+          EOF
 
       - uses: actions/configure-pages@v5
 

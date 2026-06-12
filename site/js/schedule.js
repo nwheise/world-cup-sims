@@ -22,9 +22,6 @@ import { displayName, slotDesc, ROUND_SHORT } from "./format.js";
  *  featuring a pinned team), the next WORTH_COUNT are worth a watch. */
 export const MUST_COUNT = 10;
 export const WORTH_COUNT = 15;
-/** A knockout match "features" a pinned team once they're at least a coin
- *  flip to be in it (group games are a certainty, p = 1). */
-export const PIN_PROB_FLOOR = 0.5;
 
 /**
  * Score every not-yet-played match.
@@ -68,27 +65,43 @@ export function scoreMatches(matches, probs, weights, results) {
   return out;
 }
 
+/** A match's lineup is decided when both sides are known: every group game,
+ *  and a knockout game once its slot odds have collapsed to single entries
+ *  (real results pin the participants, so all sims agree). */
+export function isDecided(s) {
+  return !s.slot1 || (s.slot1.length === 1 && s.slot2.length === 1);
+}
+
 /**
  * Split scored matches into { must, worth, rest }, each sorted by kickoff
- * (it's a schedule). Must-watch = the top `mustCount` by appeal PLUS every
- * match featuring a pinned team (a fan never misses their own team's games,
- * whatever the math says — same philosophy as the cheer guide's pinned
- * override); worth = the next `worthCount` by appeal.
+ * (it's a schedule). Only DECIDED matches (see isDecided) can tier: a
+ * speculative knockout game — "you might see someone interesting" — stays in
+ * rest until its lineup locks in, then competes like a group game. Must-watch
+ * = every decided match featuring a pinned team (a fan never misses their own
+ * team's games, whatever the math says — same philosophy as the cheer guide's
+ * pinned override) PLUS the top `mustCount` decided matches by appeal among
+ * everything else. Pinned matches don't consume those score slots, and pinned
+ * weight = 1.0 can't distort the slot race either (every decided match with
+ * a pinned team is promoted, so no slot candidate contains one): pinning only
+ * ever grows the must list, never reshuffles it. Worth = the next
+ * `worthCount` decided matches by appeal.
  */
 export function buildTiers(scored, pinned = new Set(),
                            { mustCount = MUST_COUNT, worthCount = WORTH_COUNT } = {}) {
-  const byScore = [...scored].sort((x, y) =>
-    (y.score - x.score) || x.m.kickoff.localeCompare(y.m.kickoff));
-  const mustIds = new Set(byScore.slice(0, mustCount).map((s) => s.m.id));
+  const kickoff = (x, y) => x.m.kickoff.localeCompare(y.m.kickoff);
+  const byScore = [...scored].sort((x, y) => (y.score - x.score) || kickoff(x, y));
+  const mustIds = new Set();
   for (const s of scored) {
-    if (s.teams.some(({ team, p }) => pinned.has(team) && p >= PIN_PROB_FLOOR)) {
+    if (isDecided(s) && s.teams.some(({ team }) => pinned.has(team))) {
       mustIds.add(s.m.id);
     }
   }
+  const candidates = byScore.filter((s) => isDecided(s) && !mustIds.has(s.m.id));
+  for (const s of candidates.slice(0, mustCount)) mustIds.add(s.m.id);
   const must = [], worth = [], rest = [];
   for (const s of byScore) {
     if (mustIds.has(s.m.id)) must.push(s);
-    else if (worth.length < worthCount) worth.push(s);
+    else if (isDecided(s) && worth.length < worthCount) worth.push(s);
     else rest.push(s);
   }
   const byDate = (a, b) => a.m.kickoff.localeCompare(b.m.kickoff);

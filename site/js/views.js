@@ -462,10 +462,11 @@ export function renderSchedule(S, el) {
 
   el.innerHTML = `
     <div class="card">
-      <p>Your personalized TV guide: every remaining match, scored by how much
-      <em>you</em> want to watch it. Teams you ranked high (and ⭐ pinned) count
-      most; knockout slots are weighted by who's likely to fill them, so the
-      list sharpens as results come in.</p>
+      <p>Your personalized TV guide: every remaining match with a decided
+      lineup, scored by how much <em>you</em> want to watch it. Teams you
+      ranked high (and ⭐ pinned) count most; knockout games join the rankings
+      as soon as their matchups lock in, so the list grows as results come
+      in.</p>
       ${!haveTeams ? `<p class="warn">Using <strong>default preferences</strong>
         (stronger teams ranked higher). Play the quick pick-two game in
         <a href="#teams">My teams</a> to make this schedule yours.</p>` : ""}
@@ -485,7 +486,7 @@ export function renderSchedule(S, el) {
       ${worth.map(worthLine).join("")}` : ""}
     ${rest.length ? `
       <details class="muted">
-        <summary>${rest.length} more matches rank lower for you</summary>
+        <summary>${rest.length} more matches rank lower for you or aren't decided yet</summary>
         <p class="small">${rest.map(restLabel).join(", ")}.</p>
       </details>` : ""}`;
 }

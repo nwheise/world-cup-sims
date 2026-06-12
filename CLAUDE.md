@@ -191,10 +191,17 @@ no-results baseline.)
   worker's already-serialized `appearanceProbs` — a pure client-side re-weighting, no
   worker round-trip (so it re-renders instantly on every pick/pin). Played matches drop
   out; locked knockout pairings collapse to certainty (slot lists become single entries).
-- **Tiers**: top `MUST_COUNT=10` by appeal are must-watch, next `WORTH_COUNT=15` worth a
-  watch, the rest collapsed. Every match featuring a pinned team is force-promoted to
-  must-watch (group games always; knockout once `P ≥ PIN_PROB_FLOOR = 0.5`) — fans don't
-  miss their own team's games, same philosophy as `pinnedOverride`. Tiers display
+- **Tiers**: only **decided** matches tier (`isDecided` — every group game, knockout once
+  its slot odds collapse to single entries): top `MUST_COUNT=10` by appeal are must-watch,
+  next `WORTH_COUNT=15` worth a watch; speculative knockout games ("you might see someone
+  interesting") wait in the collapsed rest until their lineups lock in, then compete like
+  group games. Every decided match featuring a pinned team is force-promoted to must-watch
+  without consuming a score slot — fans don't miss their own team's games, same philosophy
+  as `pinnedOverride`. Decided-only is also what makes pinning purely additive: pinned
+  weight = 1.0 can't distort the slot race (every decided pinned match is promoted out of
+  it, and undecided ones can't tier), so a pin only ever GROWS the must list — it used to
+  evict unrelated matches via the pin's own games and via maybe-pinned knockout games it
+  inflated (the France-vs-Senegal regression, pinned by tests). Tiers display
   date-sorted (it's a schedule).
 - **Calendar export**: `buildICS` emits RFC 5545 (CRLF, 75-octet folding that never
   splits a code point, TEXT escaping, kickoffs converted venue-offset→UTC, stable UIDs

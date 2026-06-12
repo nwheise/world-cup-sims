@@ -15,7 +15,7 @@ import { emphasize } from "../site/js/sim-core.js";
 import {
   scoreMatches, buildTiers, rankMap, matchEvents, buildICS,
   icsStamp, icsEscape, icsFold,
-  MUST_COUNT, WORTH_COUNT, PIN_PROB_FLOOR,
+  MUST_COUNT, WORTH_COUNT,
 } from "../site/js/schedule.js";
 
 const tournament = JSON.parse(readFileSync(new URL("../site/data/tournament.json", import.meta.url)));
@@ -119,7 +119,7 @@ test("buildTiers: top-N by score, tiers disjoint, complete, and date-sorted", ()
   assert.ok(Math.min(...must.map((s) => s.score)) >= Math.max(...worth.map((s) => s.score)) - 1e-12);
 });
 
-test("buildTiers: pinned team's games are always must-watch; KO needs p ≥ floor", () => {
+test("buildTiers: pinned team's decided games always must-watch; undecided KO never tiers", () => {
   const w = { Pin: 1.0, X: 0.0 };
   for (let i = 0; i < 12; i++) w[`S${i}`] = 0.95; // 6 high-appeal decoy games
   const matches = [];
@@ -128,18 +128,73 @@ test("buildTiers: pinned team's games are always must-watch; KO needs p ≥ floo
   }
   // Pinned team vs a nobody: low total appeal, must still make the cut.
   matches.push(G("pinGame", "Pin", "X", "2026-06-20T12:00:00-07:00"));
-  // Two KO matches: pinned team at 40% (below floor) and 60% (above).
+  // Two KO matches: pinned team a 60% favorite (undecided) and locked in.
   matches.push(K(73, "2026-06-28T12:00:00-07:00"), K(74, "2026-06-29T12:00:00-07:00"));
   const probs = probsFor([
-    { slot1: [["Pin", 0.4], ["X", 0.6]], slot2: [["X", 1]], matchups: [] },
     { slot1: [["Pin", 0.6], ["X", 0.4]], slot2: [["X", 1]], matchups: [] },
+    { slot1: [["Pin", 1]], slot2: [["X", 1]], matchups: [] },
   ]);
   const scored = scoreMatches(matches, probs, w, NO_RESULTS);
-  const { must } = buildTiers(scored, new Set(["Pin"]), { mustCount: 3, worthCount: 2 });
+  const { must, worth, rest } = buildTiers(scored, new Set(["Pin"]),
+    { mustCount: 3, worthCount: 5 });
   const mustIds = new Set(must.map((s) => s.m.id));
   assert.ok(mustIds.has("pinGame"), "pinned team's group game forced into must-watch");
-  assert.ok(mustIds.has("m74"), `KO with pinned at 0.6 ≥ ${PIN_PROB_FLOOR} forced in`);
-  assert.ok(!mustIds.has("m73"), "KO with pinned at 0.4 not forced in");
+  assert.ok(mustIds.has("m74"), "locked KO with the pinned team forced in");
+  assert.ok(!mustIds.has("m73"), "undecided KO not forced in, even with pinned at 0.6");
+  // The undecided KO can't even make worth (room for it there) — rest only.
+  assert.ok(!worth.some((s) => s.m.id === "m73"), "undecided KO never tiers into worth");
+  assert.ok(rest.some((s) => s.m.id === "m73"));
+});
+
+test("buildTiers: pinned matches don't consume score slots — pinning never displaces", () => {
+  // Same increasing-appeal fixture as the top-N test above.
+  const matches = [];
+  const w = {};
+  for (let i = 0; i < 30; i++) {
+    const a = `A${i}`, b = `B${i}`;
+    w[a] = i / 30; w[b] = i / 30;
+    const day = String(1 + ((i * 7) % 28)).padStart(2, "0");
+    matches.push(G(`g${i}`, a, b, `2026-06-${day}T12:00:00-07:00`));
+  }
+  const scored = scoreMatches(matches, null, w, NO_RESULTS);
+  const ids = (xs) => new Set(xs.map((s) => s.m.id));
+  const base = ids(buildTiers(scored).must); // g20..g29, no pins
+  // Pin two teams whose games already top the score race (g28, g29). The
+  // regression: those games ate two of the 10 score slots, evicting the
+  // lowest unrelated must-watch games (the France-vs-Senegal effect).
+  const pinnedMust = ids(buildTiers(scored, new Set(["A28", "A29"])).must);
+  assert.equal(pinnedMust.size, MUST_COUNT + 2,
+    "pinned games are additive on top of the 10 score slots");
+  for (const id of base) {
+    assert.ok(pinnedMust.has(id), `${id} was displaced by an unrelated pin`);
+  }
+});
+
+test("buildTiers: speculative KO games never steal slots, however high they score", () => {
+  // A pinned team at 45% in a KO match: weight 1.0 makes its FULL score top
+  // everything, but an undecided lineup can't tier at all — the score slots
+  // go to decided matches and pinning can't suppress them (the regression:
+  // pinning Belgium evicted France vs Senegal via maybe-Belgium KO games).
+  const w = { Pin: 1.0, A: 0.5, B: 0.5, S0: 0.5, S1: 0.5, S2: 0.5, S3: 0.5 };
+  const matches = [
+    G("good0", "S0", "S1", "2026-06-14T12:00:00-07:00"),
+    G("good1", "S2", "S3", "2026-06-15T12:00:00-07:00"),
+    K(73, "2026-06-28T12:00:00-07:00"),
+  ];
+  const probs = probsFor([
+    { slot1: [["Pin", 0.45], ["A", 0.55]], slot2: [["B", 1]], matchups: [] },
+  ]);
+  const scored = scoreMatches(matches, probs, w, NO_RESULTS);
+  // Sanity: by raw score the speculative KO match tops everything.
+  const ko = scored.find((s) => s.m.id === "m73");
+  assert.ok(ko.score > Math.max(...scored.filter((s) => s !== ko).map((s) => s.score)));
+  const ids = (xs) => new Set(xs.map((s) => s.m.id));
+  const noPin = buildTiers(scored, new Set(), { mustCount: 2, worthCount: 2 });
+  const { must, rest } = buildTiers(scored, new Set(["Pin"]), { mustCount: 2, worthCount: 2 });
+  assert.deepEqual(ids(must), new Set(["good0", "good1"]));
+  assert.deepEqual(ids(must), ids(noPin.must), "pinning changes nothing here");
+  assert.ok(rest.some((s) => s.m.id === "m73"),
+    "the speculative KO game waits in rest until its lineup is decided");
 });
 
 test("rankMap: pinned favorites first, then by weight — like the My-teams list", () => {

@@ -230,7 +230,7 @@ function onAttendedChanged() {
 
 function wireEvents() {
   document.addEventListener("click", (ev) => {
-    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort]");
+    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-share],[data-info],[data-info-close]");
     if (!t) return;
     if (t.dataset.tab) setTab(t.dataset.tab);
     else if (t.dataset.goto) setTab(t.dataset.goto);
@@ -297,7 +297,31 @@ function wireEvents() {
       const sel = (S.matchupSel[mid] ||= {});
       sel[slot] = sel[slot] === selTeam ? undefined : selTeam;
       renderProbs(S, sections.probs);
+    } else if (t.dataset.share !== undefined) {
+      const data = {
+        title: "World Cup 2026 — who should I cheer for?",
+        url: "https://worldcupcheerguide.com/",
+      };
+      if (navigator.share) {
+        navigator.share(data).catch(() => {});  // user cancelled — fine
+      } else {
+        navigator.clipboard?.writeText(data.url).then(() => {
+          const icon = t.innerHTML;
+          t.innerHTML = "✓ copied";
+          setTimeout(() => { t.innerHTML = icon; }, 1500);
+        });
+      }
+    } else if (t.dataset.info !== undefined) {
+      $("#info-dialog")?.showModal();
+    } else if (t.dataset.infoClose !== undefined) {
+      $("#info-dialog")?.close();
     }
+  });
+
+  // Click on the dimmed backdrop closes the overlay (the dialog element
+  // itself is only the click target when the click lands outside its box).
+  $("#info-dialog")?.addEventListener("click", (ev) => {
+    if (ev.target === ev.currentTarget) ev.currentTarget.close();
   });
 
   document.addEventListener("change", (ev) => {

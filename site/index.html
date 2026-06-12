@@ -26,6 +26,36 @@
 </head>
 <body>
 <header>
+  <div class="header-actions">
+    <button class="iconbtn" data-info title="How this works" aria-label="How this works">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+    </button>
+    <a class="iconbtn" href="https://github.com/nwheise/world-cup-sims"
+       title="Star on GitHub" aria-label="Source on GitHub">
+      <svg viewBox="0 0 16 16" width="22" height="22" fill="currentColor" aria-hidden="true">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+        0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01
+        1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95
+        0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09
+        2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87
+        3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0
+        16 8c0-4.42-3.58-8-8-8z"/>
+      </svg>
+    </a>
+    <button class="iconbtn" data-share title="Share this site" aria-label="Share this site">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+      </svg>
+    </button>
+  </div>
   <h1>⚽ World Cup 2026 — who should I cheer for?</h1>
   <p class="tagline">Going to matches? Living and dying with one team? Tell it your games
   and your teams, and a full-tournament Monte Carlo simulation tells you who to root for in
@@ -47,10 +77,12 @@
   <section id="tab-probs" hidden><p class="muted">Loading…</p></section>
 </main>
 
-<footer>
-  <details>
-    <summary>How this works</summary>
-    <ul>
+<dialog id="info-dialog">
+  <div class="dialog-head">
+    <h2>How this works</h2>
+    <button class="iconbtn" data-info-close title="Close" aria-label="Close">✕</button>
+  </div>
+  <ul>
       <li><strong>Model:</strong> goals are Poisson draws scaled by an Elo expectation on
         FIFA's 600-point scale (avg 2.7 goals/match); knockout ties break with a small
         skill edge as an extra-time/penalties proxy. Ratings are the April 2026 FIFA
@@ -80,13 +112,18 @@
         toward. It will tell you honestly when a loss would route them somewhere
         friendlier, but it never tells you to cheer against your own team.</li>
       <li><strong>Privacy:</strong> everything runs in your browser; your picks live in
-        localStorage and never leave your device.</li>
-    </ul>
-  </details>
+        localStorage and never leave your device. The only measurement is an anonymous,
+        cookieless page-view count
+        (<a href="https://www.goatcounter.com">GoatCounter</a>).</li>
+  </ul>
   <p class="muted small">Static site — simulations run client-side.
     <a href="https://github.com/nwheise/world-cup-sims">Source on GitHub</a>.</p>
-</footer>
+</dialog>
 
 <script type="module" src="js/app.js"></script>
+<!-- Anonymous, cookieless visit counting (goatcounter.com — free for
+     non-commercial use). No personal data, no consent banner needed. -->
+<script data-goatcounter="https://worldcupcheerguide.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
 </body>
 </html>

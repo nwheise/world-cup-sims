@@ -7,6 +7,8 @@
  *        { type: "simulated", probs, groupProbs, meta }
  *   in:  { type: "analyze", weights, attended, reqId } (after "simulated")
  *   out: { type: "analysis", reqId, rows, summary }
+ *   in:  { type: "teampath", team, reqId }              (after "simulated")
+ *   out: { type: "teampath", reqId, team, baseline, rows }
  *
  * The packed per-sim store (~216 bytes/sim) stays in worker memory, so
  * "analyze" — the only call that depends on the user's preferences and
@@ -15,7 +17,7 @@
 
 import {
   prepare, prepareResults, runSims,
-  appearanceProbs, groupProbs, analyzeCheer,
+  appearanceProbs, groupProbs, analyzeCheer, analyzeTeamPath,
 } from "./sim-core.js";
 
 let prep = null, fixed = null, store = null;
@@ -58,5 +60,10 @@ self.onmessage = (ev) => {
     const { rows, summary } = analyzeCheer(
       prep, fixed, store, msg.weights, msg.attended, { pinned: msg.pinned });
     self.postMessage({ type: "analysis", reqId: msg.reqId, rows, summary });
+  } else if (msg.type === "teampath") {
+    if (!store) return;
+    const res = analyzeTeamPath(prep, fixed, store, msg.team);
+    self.postMessage({ type: "teampath", reqId: msg.reqId, team: msg.team,
+                       baseline: res?.baseline ?? null, rows: res?.rows ?? [] });
   }
 };

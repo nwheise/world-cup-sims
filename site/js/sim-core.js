@@ -338,6 +338,155 @@ export function groupProbs(prep, store) {
   };
 }
 
+// --- Team-path analysis (fan mode) -----------------------------------------------
+
+/**
+ * How far does `teamName` go, and which result of every undecided game most
+ * helps them? Same bucketing trick as analyzeCheer with a different per-sim
+ * utility: the team's tournament PROGRESS — knockout rounds survived.
+ *   0 = out in the group stage, 1 = reached R32, 2 = R16, 3 = QF, 4 = SF,
+ *   5 = reached the final, 6 = champion. (The third-place match doesn't add
+ *   depth — losing semi-finalists sit at 4 either way.)
+ *
+ * Returns null for an unknown team, else { team, baseline, rows }:
+ *   baseline = { nSims, expDepth, pReach } where pReach[k] = P(progress ≥ k+1)
+ *   (so pReach[0] = advance from group, pReach[5] = champion; expDepth equals
+ *   the sum of pReach by the tail-sum identity — tests assert it).
+ *   rows (impact desc), each: { kind, id, a, b, group?/round?, kickoff, ground,
+ *     best, means (expected progress per outcome), counts, pReach (per outcome,
+ *     array of 6), impact, se, significant, ownGame, ownOverride }
+ *   se is the impact's standard error: a team's own games dwarf everything
+ *   else, so the UI uses it to split the rest into "bracket-shaping leans"
+ *   (2σ–3σ) and pure noise instead of a single cliff.
+ *
+ * For the team's OWN games the headline never roots against them: best is
+ * forced to their win, and when the math actually preferred another result
+ * ownOverride = { mathBest } is set so the UI can show the honest note —
+ * the same philosophy as analyzeCheer's pinnedOverride.
+ */
+export function analyzeTeamPath(prep, fixed, store, teamName) {
+  const t = prep.ti.get(teamName);
+  if (t === undefined) return null;
+  const { n, outcomes, koTeams, koWin } = store;
+
+  // ko index -> rounds survived by appearing there (m103, index 30, is the
+  // third-place match: its participants already peaked at SF depth 4).
+  const stageOf = (i) => (i < 16 ? 1 : i < 24 ? 2 : i < 28 ? 3 : i < 31 ? 4 : 5);
+
+  // Per-sim progress, one pass over the packed knockout records.
+  const depth = new Uint8Array(n);
+  let totalD = 0, totalD2 = 0;
+  const reachTotal = new Float64Array(6);
+  for (let s = 0; s < n; s++) {
+    const base = s * 64;
+    let d = 0;
+    for (let i = 0; i < 32; i++) {
+      if (koTeams[base + 2 * i] === t || koTeams[base + 2 * i + 1] === t) {
+        const st = stageOf(i);
+        if (st > d) d = st;
+      }
+    }
+    if (d === 5 && koWin[s * 32 + 31] === t) d = 6;
+    depth[s] = d;
+    totalD += d; totalD2 += d * d;
+    for (let k = 0; k < d; k++) reachTotal[k] += 1;
+  }
+  const varD = Math.max(totalD2 / n - (totalD / n) ** 2, 0);
+
+  // Undecided games to score — same enumeration as analyzeCheer.
+  const groupRows = prep.groupGames.filter((g) => fixed.scores[2 * g.idx] < 0);
+  const koRows = [];
+  prep.ko.forEach((m, i) => {
+    if (fixed.koKnown[i] && fixed.koWinner[i] === NONE) koRows.push(i);
+  });
+
+  // Buckets: per game per outcome -> [sumDepth, count, reachCounts(6)]
+  const mkCell = () => [0, 0, new Float64Array(6)];
+  const mkBucket = () => ({ A: mkCell(), D: mkCell(), B: mkCell() });
+  const gBuckets = groupRows.map(mkBucket);
+  const kBuckets = koRows.map(mkBucket);
+
+  for (let s = 0; s < n; s++) {
+    const d = depth[s];
+    for (let r = 0; r < groupRows.length; r++) {
+      const o = outcomes[s * 72 + groupRows[r].idx];
+      const cell = gBuckets[r][o === 0 ? "A" : o === 1 ? "D" : "B"];
+      cell[0] += d; cell[1] += 1;
+      for (let k = 0; k < d; k++) cell[2][k] += 1;
+    }
+    for (let r = 0; r < koRows.length; r++) {
+      const i = koRows[r];
+      const [t1, t2] = fixed.koKnown[i];
+      // Sims whose simulated lineup differs from the real one tell us nothing
+      // about this real matchup — skip them (same guard as analyzeCheer).
+      if ((koTeams[s * 64 + 2 * i] !== t1 || koTeams[s * 64 + 2 * i + 1] !== t2) &&
+          (koTeams[s * 64 + 2 * i] !== t2 || koTeams[s * 64 + 2 * i + 1] !== t1)) continue;
+      const cell = kBuckets[r][store.koWin[s * 32 + i] === t1 ? "A" : "B"];
+      cell[0] += d; cell[1] += 1;
+      for (let k = 0; k < d; k++) cell[2][k] += 1;
+    }
+  }
+
+  const buildRow = (kind, id, aIdx, bIdx, bucket, extra) => {
+    const means = {}, counts = {}, pReach = {};
+    for (const o of ["A", "D", "B"]) {
+      const [sum, c, rc] = bucket[o];
+      if (!c) continue;
+      means[o] = sum / c; counts[o] = c;
+      pReach[o] = Array.from(rc, (x) => x / c);
+    }
+    const os = Object.keys(means);
+    if (os.length < 2) return null;   // outcome effectively decided in-sim
+    let best = os[0], worst = os[0];
+    for (const o of os) {
+      if (means[o] > means[best]) best = o;
+      if (means[o] < means[worst]) worst = o;
+    }
+    const impact = means[best] - means[worst];
+    const se = varD > 0
+      ? Math.sqrt(varD * (1 / counts[best] + 1 / counts[worst])) : 0;
+    const ownGame = aIdx === t || bIdx === t;
+    // Fan axiom: never headline against the followed team. Keep the math's
+    // pick in ownOverride so the UI can be honest about it.
+    let ownOverride = null;
+    if (ownGame) {
+      const oWin = aIdx === t ? "A" : "B";
+      if (best !== oWin) { ownOverride = { mathBest: best }; best = oWin; }
+    }
+    return {
+      kind, id, a: prep.teams[aIdx], b: prep.teams[bIdx],
+      means, counts, pReach, best, impact, se, significant: impact > 3 * se,
+      ownGame, ownOverride, ...extra,
+    };
+  };
+
+  const rows = [];
+  groupRows.forEach((g, r) => {
+    const row = buildRow("group", g.id, g.a, g.b, gBuckets[r],
+                         { group: GROUP_LETTERS[g.group], kickoff: g.kickoff, ground: g.ground });
+    if (row) rows.push(row);
+  });
+  koRows.forEach((i, r) => {
+    const m = prep.ko[i];
+    const [t1, t2] = fixed.koKnown[i];
+    const row = buildRow("ko", m.id, t1, t2, kBuckets[r],
+                         { round: m.round, kickoff: m.kickoff, ground: m.ground });
+    if (row) rows.push(row);
+  });
+  rows.sort((x, y) => y.impact - x.impact);
+
+  return {
+    team: teamName,
+    baseline: {
+      nSims: n,
+      expDepth: totalD / n,
+      pReach: Array.from(reachTotal, (c) => c / n),
+      decided: varD === 0,   // fate fully determined (eliminated, or champions)
+    },
+    rows,
+  };
+}
+
 // --- Personalized cheer-guide analysis ------------------------------------------
 
 export function emphasize(w, gamma = EMPHASIS) {

@@ -34,6 +34,7 @@
     <button data-tab="guide">🎺 Cheer guide</button>
     <button data-tab="matches">🎟️ My matches</button>
     <button data-tab="teams">❤️ My teams</button>
+    <button data-tab="path">🧭 Team path</button>
     <button data-tab="probs">📊 Probabilities</button>
   </nav>
 </header>
@@ -42,6 +43,7 @@
   <section id="tab-guide"><p class="muted">Loading…</p></section>
   <section id="tab-matches" hidden><p class="muted">Loading…</p></section>
   <section id="tab-teams" hidden><p class="muted">Loading…</p></section>
+  <section id="tab-path" hidden><p class="muted">Loading…</p></section>
   <section id="tab-probs" hidden><p class="muted">Loading…</p></section>
 </main>
 
@@ -72,6 +74,11 @@
         telling you to root against a team you love unless the payoff is real (for that
         team or another favorite) — and it will <em>never</em> tell you to cheer against a
         team you've pinned.</li>
+      <li><strong>Team path:</strong> follow one team and the same simulation scores every
+        remaining game by how much its result extends <em>their</em> expected run — group
+        survival, but also which bracket slots and opponents each result steers them
+        toward. It will tell you honestly when a loss would route them somewhere
+        friendlier, but it never tells you to cheer against your own team.</li>
       <li><strong>Privacy:</strong> everything runs in your browser; your picks live in
         localStorage and never leave your device.</li>
     </ul>

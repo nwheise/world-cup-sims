@@ -19,16 +19,16 @@ test suite (see "Key findings").
 | File | Purpose |
 |---|---|
 | `site/index.html`, `site/css/style.css` | Single-page app shell + styles (dark, mobile-friendly, no framework). |
-| `site/js/sim-core.js` | **The simulator + analysis engine** (pure ESM — identical in the Web Worker and under node tests). Official FIFA 2026 rules end to end; simulates all 104 matches, honoring real results (`prepareResults`): played group games pinned, known knockout winners honored when they match the simulated lineup. Packs per-sim records (~216 bytes: 72 group outcomes, 48 group positions, 64 knockout participants, 32 winners) so re-analysis never re-simulates. Hosts `appearanceProbs` (per-slot + full joint matchup distributions + champion), `groupProbs`, `analyzeCheer` (cheer guide incl. loyalty guard, per-liked-team conditionals, top-picks summary), `assessLoyalty`, `emphasize`. Constants: `EMPHASIS=2.0`, `LIKE_FLOOR=0.5`, `SWING_THRESHOLD=0.03`, seed 42, default 20k sims. |
-| `site/js/worker.js` | Web Worker wrapper: `simulate` once (progress events), then `analyze` requests (weights + attended matches) are instant re-aggregations. |
+| `site/js/sim-core.js` | **The simulator + analysis engine** (pure ESM — identical in the Web Worker and under node tests). Official FIFA 2026 rules end to end; simulates all 104 matches, honoring real results (`prepareResults`): played group games pinned, known knockout winners honored when they match the simulated lineup. Packs per-sim records (~216 bytes: 72 group outcomes, 48 group positions, 64 knockout participants, 32 winners) so re-analysis never re-simulates. Hosts `appearanceProbs` (per-slot + full joint matchup distributions + champion), `groupProbs`, `analyzeCheer` (cheer guide incl. loyalty guard, per-liked-team conditionals, top-picks summary), `analyzeTeamPath` (fan mode — see "The team-path math"), `assessLoyalty`, `emphasize`. Constants: `EMPHASIS=2.0`, `LIKE_FLOOR=0.5`, `SWING_THRESHOLD=0.03`, seed 42, default 20k sims. |
+| `site/js/worker.js` | Web Worker wrapper: `simulate` once (progress events), then `analyze` (weights + attended matches) and `teampath` (followed team) requests are instant re-aggregations. |
 | `site/js/prefs.js` | Head-to-head preference ranking (Elo replay over the pick history): `computeScores` (supports `[a,b,"="]` equal-preference entries scored as draws, and optional priors), `ratingPriors` (FIFA ratings compressed into `INIT_ELO ± PRIOR_SPREAD/2 = ±150` — zero picks already means "best teams first", ~6 picks flip any prior gap), `computeWeights` (min-max to [0,1]), `applyPins` (pinned favorites locked at 1.0, unpinned compressed below `UNPINNED_CAP=0.85`), `pickPair` (adaptive most-informative pairing). |
-| `site/js/views.js`, `site/js/app.js`, `site/js/format.js` | Rendering (pure state→HTML), state/persistence/worker wiring (localStorage keys `wc26:comparisons`, `wc26:attended`, `wc26:pinned`, `wc26:settings`), and display helpers (names/flags, venue-local kickoff times, viewer-local timestamps, slot descriptions). |
+| `site/js/views.js`, `site/js/app.js`, `site/js/format.js` | Rendering (pure state→HTML), state/persistence/worker wiring (localStorage keys `wc26:comparisons`, `wc26:attended`, `wc26:pinned`, `wc26:settings`, `wc26:fanteam`), and display helpers (names/flags, venue-local kickoff times, viewer-local timestamps, slot descriptions). |
 | `site/data/tournament.json` | **Static facts** (committed): groups, ratings, all 104 matches with kickoffs/venues/slot codes, Annex C. Regenerate via `build_data.py` only if FIFA reschedules or ratings are refreshed. |
 | `site/data/results.json` | **Live results** (committed, refreshed by the cron): `group_results` keyed `"TeamA\|TeamB"` (90-min scores), `knockout` keyed `m73..m104` (participants once known; score + winner once played). |
 | `scripts/build_data.py` | Generates tournament.json. Self-contained: embeds GROUPS/RATINGS (see Model details) and fully validates `annex_c.txt` on every run (rows 1–495, every C(12,8) combo exactly once, per-row permutation, per-slot legality); cross-checks the fetched openfootball schedule against the verified third-place slot table below. |
 | `scripts/update_results.py` | Live results → results.json. **Primary: ESPN public scoreboard API** (keyless, near-live; group games matched by team pair, knockout events by unique UTC kickoff; winner from ESPN's per-competitor flag so ET/pens are correct). **Fallback: openfootball** (volunteer-run; unreliable mid-tournament — in 2022 its JSON got scores backfilled years later). Idempotent; no-op after Aug 1, 2026. `parse_espn()` is pure and tested. |
 | `annex_c.txt` | FIFA's official Annex C third-place allocation table — all 495 C(12,8) combinations, transcribed from the published schedule. **Do not regenerate or hand-edit**; `build_data.py` re-validates it structurally on every run. |
-| `tests/sim-core.test.mjs` | **JS suite** (`node --test "tests/**/*.test.mjs"`, no npm deps, node ≥ 20). Invariants (groups/ratings/annex, H2H-beats-GD tiebreaker case, bracket wiring, seed reproducibility) + cross-validation against the Python sim's published findings + behavior pins: real results pinning, known-knockout-winner honoring, per-slot probs sum to 1, matchup joint↔marginal consistency, loyalty guard (self/other/suppress incl. the Switzerland/Canada/M85 regression), bucket==pinned-run conditioning, equal-preference Elo, pin dominance. |
+| `tests/sim-core.test.mjs` | **JS suite** (`node --test "tests/**/*.test.mjs"`, no npm deps, node ≥ 20). Invariants (groups/ratings/annex, H2H-beats-GD tiebreaker case, bracket wiring, seed reproducibility) + cross-validation against the Python sim's published findings + behavior pins: real results pinning, known-knockout-winner honoring, per-slot probs sum to 1, matchup joint↔marginal consistency, loyalty guard (self/other/suppress incl. the Switzerland/Canada/M85 regression), bucket==pinned-run conditioning (cheer AND team-path), team-path internal identities (survival-curve monotonicity, tail-sum E[depth], cross-checks vs groupProbs/appearanceProbs), equal-preference Elo, pin dominance. |
 | `test_update_results.py` | **Python suite** (`python3 -m unittest test_update_results`). ESPN parser (name mapping, pair flip, placeholders, pens-decided winner, malformed-feed guard) + build_data embedded-data integrity + Annex C validation + committed-tournament.json consistency. |
 | `.github/workflows/site.yml` | One workflow: push to main → tests + Pages deploy; **2-hour cron** / manual dispatch → refresh results.json, commit if changed, tests + deploy. Single workflow on purpose: GITHUB_TOKEN pushes don't trigger other workflows. |
 
@@ -163,6 +163,23 @@ no-results baseline.)
   team's win and the row carries `pinnedOverride` ({mathBest, against, pWin, pRec}) —
   rendered as an honest "their odds are better if they lose, but that's not what being a
   fan is about" note (worker passes the pinned list via `opts.pinned`).
+
+## The team-path math (in `analyzeTeamPath`; "🧭 Team path" tab)
+
+- **Fan mode**: follow ONE team; per simulated tournament its utility is **progress** =
+  knockout rounds survived (0 = out in groups, 1 = reached R32, … 5 = reached the final,
+  6 = champion; the third-place match adds no depth). Same outcome-bucketing as the cheer
+  guide over the same packed store — `teampath` worker requests are instant.
+- Baseline `pReach[k] = P(progress ≥ k+1)` is a survival curve (monotone; `pReach[0]` ==
+  `groupProbs.advance`, `pReach[5]` == champion odds; `expDepth` == Σ pReach by the
+  tail-sum identity — all pinned by tests). `decided` flags a fully-determined fate.
+- **Three display tiers** (the team's own games dwarf everything else by ~10×, so a single
+  3σ cliff would hide the feature's point): full cards for `impact > 3·se`, a compact
+  "smaller bracket-shapers" lean list for 2σ–3σ (capped at 10 — these shape WHO the team
+  meets, ~0.05–0.1 expected rounds each), and a noise footnote for the rest.
+- **Fan axiom**: the headline never roots against the followed team in its own games;
+  when the math disagrees, `ownOverride.mathBest` carries the honest note (same
+  philosophy as the cheer guide's `pinnedOverride`).
 
 ## Provenance / trust notes
 

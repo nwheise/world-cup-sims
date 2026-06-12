@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import {
   makeRng, expectedScore, simulateMatch, rankGroup,
   prepare, prepareResults, runSims,
-  appearanceProbs, groupProbs, analyzeCheer,
+  appearanceProbs, groupProbs, analyzeCheer, analyzeTeamPath,
   emphasize, assessLoyalty,
 } from "../site/js/sim-core.js";
 import {
@@ -562,4 +562,123 @@ test("analyzeCheer: known-participant unplayed knockout match gets a recommendat
   const rec = r82.best === "A" ? r82.a : r82.b;
   assert.equal(rec, t1, "you attend M94: root for your favorite to win M82");
   assert.ok(r82.significant);
+});
+
+// --- team path (fan mode) -----------------------------------------------------
+
+test("analyzeTeamPath: baseline coherent and consistent with the other aggregations", () => {
+  const res = analyzeTeamPath(prep, noResults, store, "USA");
+  const { baseline, rows } = res;
+  // Reach curve is a survival function: monotone non-increasing.
+  for (let k = 1; k < 6; k++) {
+    assert.ok(baseline.pReach[k] <= baseline.pReach[k - 1] + 1e-12);
+  }
+  // pReach[0] (made the knockout) must equal groupProbs' advance.
+  const gp = groupProbs(prep, store);
+  assert.ok(Math.abs(baseline.pReach[0] - gp.advance[teamIdx("USA")]) < 1e-12);
+  // pReach[5] (champion) must equal appearanceProbs' champion entry.
+  const probs = appearanceProbs(prep, store);
+  const champ = probs.champion.find(([t]) => t === teamIdx("USA"))?.[1] ?? 0;
+  assert.ok(Math.abs(baseline.pReach[5] - champ) < 1e-12);
+  // Tail-sum identity: E[rounds survived] = sum of P(survive >= k).
+  const tailSum = baseline.pReach.reduce((a, b) => a + b, 0);
+  assert.ok(Math.abs(baseline.expDepth - tailSum) < 1e-9);
+  assert.equal(baseline.decided, false);
+  // All 72 group games scored; per-outcome reach curves are survival functions
+  // too, and the expected-depth identity holds inside every bucket.
+  assert.equal(rows.length, 72);
+  for (const r of rows) {
+    for (const o of Object.keys(r.means)) {
+      const pr = r.pReach[o];
+      for (let k = 1; k < 6; k++) assert.ok(pr[k] <= pr[k - 1] + 1e-12);
+      assert.ok(Math.abs(r.means[o] - pr.reduce((a, b) => a + b, 0)) < 1e-9);
+    }
+    // se feeds the UI's significant / lean / noise tiers.
+    assert.ok(r.se > 0 && r.significant === (r.impact > 3 * r.se));
+  }
+  // Unknown team -> null.
+  assert.equal(analyzeTeamPath(prep, noResults, store, "Narnia"), null);
+});
+
+test("analyzeTeamPath: a contender's own group games say WIN, and dominate the impact list", () => {
+  const { rows } = analyzeTeamPath(prep, noResults, store, "USA");
+  const own = rows.filter((r) => r.a === "USA" || r.b === "USA");
+  assert.equal(own.length, 3);
+  for (const r of own) {
+    assert.ok(r.ownGame);
+    const rec = r.best === "A" ? r.a : r.best === "B" ? r.b : "DRAW";
+    assert.equal(rec, "USA", `${r.a} vs ${r.b}: expected USA, got ${rec}`);
+    // For a group favorite, winning genuinely maximizes the expected run —
+    // the fan-axiom override must NOT have been needed.
+    assert.equal(r.ownOverride, null);
+    assert.ok(r.significant, "own games must clear the noise floor");
+  }
+  // Nothing swings a team's run like its own results.
+  assert.ok(rows.slice(0, 5).some((r) => r.a === "USA" || r.b === "USA"),
+    "a USA game should be among the most impactful for USA's path");
+  // Games with no path to affecting USA shouldn't be significant — spot-check
+  // that the significant set is a strict subset, not everything.
+  assert.ok(rows.some((r) => !r.significant), "some games must be noise for one team's path");
+});
+
+test("analyzeTeamPath conditionals are true conditionals (bucket == pinned run)", () => {
+  // Expected-depth-by-outcome from bucketing one big run must match the
+  // expected depth measured by a SEPARATE simulation with that result pinned
+  // as a real score — the same conditioning identity the cheer guide pins.
+  const { rows } = analyzeTeamPath(prep, noResults, store, "USA");
+  const r = rows.find((x) => (x.a === "USA" && x.b === "Paraguay") ||
+                             (x.a === "Paraguay" && x.b === "USA"));
+  assert.ok(r, "USA vs Paraguay row exists");
+  const usaIsA = r.a === "USA";
+  const pinnedDepth = (score) => {
+    const fixed = prepareResults(prep, { group_results: { [r.id]: score }, knockout: {} });
+    const st = runSims(prep, fixed, 4000, 1234);
+    return analyzeTeamPath(prep, fixed, st, "USA").baseline.expDepth;
+  };
+  const winScore = usaIsA ? [2, 0] : [0, 2];
+  const lossScore = usaIsA ? [0, 2] : [2, 0];
+  const winPinned = pinnedDepth(winScore), lossPinned = pinnedDepth(lossScore);
+  const winBucket = r.means[usaIsA ? "A" : "B"], lossBucket = r.means[usaIsA ? "B" : "A"];
+  // A specific 2-0 scoreline vs the bucket's mix of all scorelines: allow MC +
+  // goal-difference slack, but the agreement must show the numbers are real
+  // conditionals (depth lives on a 0..6 scale).
+  assert.ok(Math.abs(winPinned - winBucket) < 0.2, `bucket ${winBucket} vs pinned ${winPinned}`);
+  assert.ok(Math.abs(lossPinned - lossBucket) < 0.2, `bucket ${lossBucket} vs pinned ${lossPinned}`);
+  // And the obvious direction: winning beats losing for the expected run.
+  assert.ok(winBucket > lossBucket + 0.3,
+    `USA win must clearly extend the run: ${lossBucket} -> ${winBucket}`);
+});
+
+test("analyzeTeamPath: known-participant unplayed knockout match gets a row", () => {
+  // Same fixture as the cheer-guide ko test: all group games pinned, M82's
+  // participants known but unplayed. For the team IN the match, winning a
+  // knockout game is by construction +1 round at minimum.
+  const rnd = makeRng(99);
+  const fixedScores = {};
+  for (const g of prep.groupGames) {
+    const [ga, gb] = simulateMatch(prep.ratings[g.a], prep.ratings[g.b], false, rnd);
+    fixedScores[g.id] = [ga, gb];
+  }
+  let fixed = prepareResults(prep, { group_results: fixedScores, knockout: {} });
+  const st0 = runSims(prep, fixed, 50, 1);
+  const i82 = 82 - 73;
+  const t1 = prep.teams[st0.koTeams[2 * i82]], t2 = prep.teams[st0.koTeams[2 * i82 + 1]];
+  fixed = prepareResults(prep, {
+    group_results: fixedScores,
+    knockout: { m82: { team1: t1, team2: t2 } },
+  });
+  const st = runSims(prep, fixed, 3000, 7);
+  const res = analyzeTeamPath(prep, fixed, st, t1);
+  const r82 = res.rows.find((r) => r.id === "m82");
+  assert.ok(r82, "m82 scored once participants are known");
+  assert.equal(r82.kind, "ko");
+  assert.ok(r82.ownGame);
+  const rec = r82.best === "A" ? r82.a : r82.b;
+  assert.equal(rec, t1, "the followed team should be told to win its own knockout game");
+  assert.equal(r82.ownOverride, null, "winning a knockout is never worse for the run");
+  assert.ok(r82.significant);
+  // With every group game played, group results contribute no rows.
+  assert.ok(res.rows.every((r) => r.kind === "ko"));
+  // pReach[0] = 1: the team is already in the bracket.
+  assert.ok(Math.abs(res.baseline.pReach[0] - 1) < 1e-12);
 });

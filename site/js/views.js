@@ -356,6 +356,185 @@ export function renderTeams(S, el) {
 }
 
 // ---------------------------------------------------------------------------
+// Team path (fan mode: follow one team)
+// ---------------------------------------------------------------------------
+
+const PATH_STAGES = [
+  "Advance from the group", "Reach the round of 16", "Reach the quarter-finals",
+  "Reach the semi-finals", "Reach the final", "Win the World Cup",
+];
+
+/**
+ * "How this result moves their odds" — per tournament stage, P(the followed
+ * team gets at least that far) under each outcome. Only stages that actually
+ * move (>1pp spread) are shown.
+ */
+function pathTable(r, team) {
+  const os = ["A", "D", "B"].filter((o) => r.means[o] !== undefined);
+  const stages = PATH_STAGES
+    .map((label, k) => ({ label, vals: os.map((o) => r.pReach[o][k]) }))
+    .filter(({ vals }) => Math.max(...vals) - Math.min(...vals) > 0.01);
+  if (!stages.length) return "";
+  const head = os.map((o) =>
+    `<th class="${o === r.best ? "rec" : ""}">${o === "D" ? "draw" : esc(displayName(o === "A" ? r.a : r.b)) + " wins"}</th>`).join("");
+  const rows = stages.map(({ label, vals }) => `
+    <tr><td>${esc(label)}</td>${os.map((o, i) =>
+      `<td class="${o === r.best ? "rec" : ""}">${pct(vals[i])}</td>`).join("")}</tr>`).join("");
+  return `
+    <details class="lineup-detail">
+      <summary class="muted small">How this result moves ${esc(displayName(team))}'s odds</summary>
+      <table class="lineup-table">
+        <tr><th>P(${esc(displayName(team))}…)</th>${head}</tr>
+        ${rows}
+      </table>
+    </details>`;
+}
+
+export function renderPath(S, el) {
+  const team = S.fanTeam;
+  const allTeams = Object.keys(S.ratings).sort();
+  const pinnedList = [...S.pinned].filter((t) => t in S.ratings).sort();
+  const opt = (t) =>
+    `<option value="${esc(t)}" ${t === team ? "selected" : ""}>${flag(t)} ${esc(displayName(t))}</option>`;
+  const picker = `
+    <div class="card">
+      <p>Follow <strong>one team</strong> through the whole tournament: for every
+      remaining game — including other groups — see which result most extends
+      <em>their</em> run, from group survival to bracket slots with the friendliest
+      opponents.</p>
+      <label>Following:
+        <select id="fan-team">
+          <option value="">— pick a team —</option>
+          ${pinnedList.length ? `<optgroup label="⭐ Pinned favorites">${pinnedList.map(opt).join("")}</optgroup>` : ""}
+          <optgroup label="All teams">${allTeams.map(opt).join("")}</optgroup>
+        </select>
+      </label>
+    </div>`;
+
+  if (!team) {
+    el.innerHTML = `${picker}
+      <div class="onboard">
+        <h2>Whose run are you living and dying with?</h2>
+        <p>Pick a team above${pinnedList.length ? " — or jump straight to a pinned favorite:" : "."}</p>
+        ${pinnedList.length ? `<p>${pinnedList.map((t) =>
+          `<button class="btn" data-fan-team="${esc(t)}">${flag(t)} ${esc(displayName(t))}</button>`).join(" ")}</p>` : ""}
+        <p class="muted">This is different from the cheer guide: instead of optimizing
+        who <em>you</em> see at your matches, it optimizes how far <em>they</em> go.</p>
+      </div>`;
+    return;
+  }
+
+  const A = S.pathAnalysis;
+  if (!A || A.team !== team || !A.baseline) {
+    el.innerHTML = `${picker}<p class="muted">${simStatusLine(S)}</p>`;
+    return;
+  }
+
+  const { baseline, rows } = A;
+  const outlook = `
+    <div class="card summary">
+      <h2>${teamLabel(team)} — the road ahead</h2>
+      <ul class="top-picks">
+        ${PATH_STAGES.map((label, k) => `
+          <li>${esc(label)} <strong>${pct(baseline.pReach[k])}</strong>${bar(baseline.pReach[k])}</li>`).join("")}
+      </ul>
+      <p class="muted small">On average ${esc(displayName(team))} survives
+      <strong>${baseline.expDepth.toFixed(1)}</strong> knockout rounds
+      (0 = out in the group stage, 6 = champions).</p>
+      <p class="muted small">${simStatusLine(S)}</p>
+    </div>`;
+
+  if (baseline.decided) {
+    const fate = baseline.pReach[5] >= 1 ? `🏆 ${displayName(team)} are world champions!`
+      : baseline.pReach[0] <= 0 ? `${displayName(team)}'s World Cup ended in the group stage.`
+      : `${displayName(team)}'s run is over — no remaining game can change how far they got.`;
+    el.innerHTML = `${picker}${outlook}<p class="muted">${esc(fate)}</p>`;
+    return;
+  }
+
+  const significant = rows.filter((r) => r.significant);
+  // A team's own games dwarf everything else, so most "who do they meet
+  // later" effects sit just under the 3σ cliff. Surface the 2σ–3σ tier as
+  // compact leans rather than burying the feature's whole point in noise.
+  const leans = rows.filter((r) => !r.significant && r.impact > 2 * r.se).slice(0, 10);
+  const leanIds = new Set(leans.map((r) => r.id));
+  const negligible = rows.filter((r) => !r.significant && !leanIds.has(r.id));
+  const maxImpact = significant.length ? significant[0].impact : 1;
+  const sorted = S.pathSort === "date"
+    ? [...significant].sort((a, b) => a.kickoff.localeCompare(b.kickoff))
+    : significant;
+
+  const rowHtml = (r) => {
+    const rec = r.best === "D" ? null : r.best === "A" ? r.a : r.b;
+    let note = "";
+    if (r.ownOverride) {
+      const alt = r.ownOverride.mathBest === "D" ? "with a draw" : "if they lost";
+      note = `
+      <p class="pinned-note">⭐ This is ${teamLabel(team)}'s own game, so there's only
+      one call: go ${esc(displayName(team))}! Full honesty: the simulation says their
+      run would be longer on average ${alt} (the bracket math below), but rooting
+      against your own team isn't what being a fan is about.</p>`;
+    }
+    const means = ["A", "D", "B"].filter((o) => r.means[o] !== undefined)
+      .map((o) => {
+        const lbl = o === "D" ? "draw" : displayName(o === "A" ? r.a : r.b) + " wins";
+        return `${esc(lbl)} ${r.means[o].toFixed(2)}`;
+      }).join(" · ");
+    return `
+      <article class="card cheer-card">
+        <div class="cheer-head">
+          ${matchChip(r)}
+          <span class="matchup">${teamLabel(r.a)} <em>vs</em> ${teamLabel(r.b)}</span>
+          <span class="when muted">${fmtKickoff(r.kickoff)} · ${esc(r.ground)}</span>
+        </div>
+        <div class="cheer-rec">
+          ${rec ? `Cheer for <strong>${teamLabel(rec)}</strong>` : "Root for a <strong>draw</strong>"}
+          ${r.ownGame ? '<span class="chip attend">their game</span>' : ""}
+        </div>
+        <div class="cheer-impact" title="How much this one result swings the team's expected tournament run">
+          ${bar(r.impact / maxImpact, "impact")}<span class="muted">impact ${r.impact.toFixed(2)} rounds</span>
+        </div>
+        <p class="muted small">Expected rounds survived by outcome: ${means}</p>
+        ${note}
+        ${pathTable(r, team)}
+      </article>`;
+  };
+
+  el.innerHTML = `${picker}${outlook}
+    <div class="cheer-controls">
+      <h2>Who to cheer for — for ${esc(displayName(team))}'s sake</h2>
+      <span class="seg">
+        <button class="btn small ${S.pathSort === "date" ? "active" : ""}" data-path-sort="date">by date</button>
+        <button class="btn small ${S.pathSort !== "date" ? "active" : ""}" data-path-sort="impact">by impact</button>
+      </span>
+    </div>
+    ${sorted.length ? sorted.map(rowHtml).join("") : `
+      <p class="muted">No single remaining game meaningfully changes how far
+      ${esc(displayName(team))} goes.</p>`}
+    ${leans.length ? `
+      <h2>Smaller bracket-shapers</h2>
+      <p class="muted small">These results barely change <em>whether</em>
+      ${esc(displayName(team))} advances — they nudge <em>who they'd meet</em>
+      later in the bracket. Each is worth a fraction of a round and sits close
+      to simulation noise, so treat the direction as a lean, not a law (more
+      simulations in the Probabilities tab sharpen them).</p>
+      ${leans.map((r) => {
+        const rec = r.best === "D" ? "a <strong>draw</strong>"
+          : `<strong>${teamLabel(r.best === "A" ? r.a : r.b)}</strong>`;
+        return `
+        <p class="note">• <strong>${teamLabel(r.a)} vs ${teamLabel(r.b)}</strong>
+        (${fmtKickoff(r.kickoff)}): lean ${rec}
+        <span class="muted small">(+${r.impact.toFixed(2)} expected rounds)</span></p>`;
+      }).join("")}` : ""}
+    ${negligible.length ? `
+      <details class="muted">
+        <summary>${negligible.length} more upcoming games are within simulation noise</summary>
+        <p class="small">These don't meaningfully move ${esc(displayName(team))}'s run:
+        ${negligible.map((r) => `${esc(displayName(r.a))}–${esc(displayName(r.b))}`).join(", ")}.</p>
+      </details>` : ""}`;
+}
+
+// ---------------------------------------------------------------------------
 // Probabilities (preference-independent forecast)
 // ---------------------------------------------------------------------------
 

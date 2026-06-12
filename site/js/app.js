@@ -13,13 +13,14 @@ import { prepare, rankGroup } from "./sim-core.js";
 import { computeScores, computeCounts, computeWeights, applyPins, pickPair,
          ratingPriors } from "./prefs.js";
 import { displayName } from "./format.js";
-import { renderCheer, renderMatches, renderTeams, renderProbs } from "./views.js";
+import { renderCheer, renderMatches, renderTeams, renderPath, renderProbs } from "./views.js";
 
 const LS = {
   comparisons: "wc26:comparisons",
   attended: "wc26:attended",
   pinned: "wc26:pinned",
   settings: "wc26:settings",
+  fanTeam: "wc26:fanteam",
 };
 const load = (k, fallback) => {
   try { return JSON.parse(localStorage.getItem(k)) ?? fallback; }
@@ -38,16 +39,19 @@ const S = {
   attended: new Set(load(LS.attended, [])),
   pinned: new Set(load(LS.pinned, [])),
   settings: { nSims: 20000, ...load(LS.settings, {}) },
+  fanTeam: load(LS.fanTeam, null),
+  pathAnalysis: null, pathSort: "date",
   pool: [], weights: {}, counts: new Map(), currentPair: null,
   cheerSort: "date", venueFilter: "",
   matchupSel: {},                            // transient probe state (probs tab)
   teamsNotice: null,                         // transient feedback (teams tab)
   lastReqId: 0,
+  lastPathReqId: 0,
 };
 
 let worker = null;
 const $ = (sel) => document.querySelector(sel);
-const sections = { guide: null, matches: null, teams: null, probs: null };
+const sections = { guide: null, matches: null, teams: null, path: null, probs: null };
 
 // --- derived state -----------------------------------------------------------
 
@@ -114,6 +118,7 @@ function renderAll() {
   renderCheer(S, sections.guide);
   renderMatches(S, sections.matches);
   renderTeams(S, sections.teams);
+  renderPath(S, sections.path);
   renderProbs(S, sections.probs);
 }
 
@@ -132,7 +137,9 @@ function startSimulation() {
   S.simStatus = { state: "running", done: 0, total: S.settings.nSims };
   S.probs = null;
   S.analysis = null;
+  S.pathAnalysis = null;
   renderCheer(S, sections.guide);
+  renderPath(S, sections.path);
   renderProbs(S, sections.probs);
   worker.postMessage({
     type: "simulate",
@@ -161,6 +168,16 @@ function scheduleAnalyze() {
   }, 200);
 }
 
+let pathTimer = null;
+function schedulePathAnalyze() {
+  if (pathTimer) clearTimeout(pathTimer);
+  pathTimer = setTimeout(() => {
+    if (S.simStatus.state !== "done" || !S.fanTeam) return;
+    S.lastPathReqId += 1;
+    worker.postMessage({ type: "teampath", team: S.fanTeam, reqId: S.lastPathReqId });
+  }, 200);
+}
+
 function onWorkerMessage(ev) {
   const msg = ev.data;
   if (msg.type === "progress") {
@@ -180,14 +197,27 @@ function onWorkerMessage(ev) {
     computePrefs();
     renderAll();
     scheduleAnalyze();
+    schedulePathAnalyze();
   } else if (msg.type === "analysis") {
     if (msg.reqId !== S.lastReqId) return; // stale
     S.analysis = { rows: msg.rows, summary: msg.summary };
     renderCheer(S, sections.guide);
+  } else if (msg.type === "teampath") {
+    if (msg.reqId !== S.lastPathReqId) return; // stale
+    S.pathAnalysis = { team: msg.team, baseline: msg.baseline, rows: msg.rows };
+    renderPath(S, sections.path);
   }
 }
 
 // --- events --------------------------------------------------------------------------
+
+function setFanTeam(team) {
+  S.fanTeam = team || null;
+  save(LS.fanTeam, S.fanTeam);
+  S.pathAnalysis = null;
+  renderPath(S, sections.path);
+  schedulePathAnalyze();
+}
 
 function onAttendedChanged() {
   save(LS.attended, [...S.attended]);
@@ -200,7 +230,7 @@ function onAttendedChanged() {
 
 function wireEvents() {
   document.addEventListener("click", (ev) => {
-    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team]");
+    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort]");
     if (!t) return;
     if (t.dataset.tab) setTab(t.dataset.tab);
     else if (t.dataset.goto) setTab(t.dataset.goto);
@@ -257,6 +287,11 @@ function wireEvents() {
       computePrefs();
       renderTeams(S, sections.teams);
       scheduleAnalyze();
+    } else if (t.dataset.fanTeam !== undefined) {
+      setFanTeam(t.dataset.fanTeam);
+    } else if (t.dataset.pathSort) {
+      S.pathSort = t.dataset.pathSort;
+      renderPath(S, sections.path);
     } else if (t.dataset.selTeam) {
       const { mid, slot, selTeam } = t.dataset;
       const sel = (S.matchupSel[mid] ||= {});
@@ -271,6 +306,8 @@ function wireEvents() {
       if (t.checked) S.attended.add(t.dataset.mid);
       else S.attended.delete(t.dataset.mid);
       onAttendedChanged();
+    } else if (t.id === "fan-team") {
+      setFanTeam(t.value);
     } else if (t.id === "venue-filter") {
       S.venueFilter = t.value;
       renderMatches(S, sections.matches);

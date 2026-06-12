@@ -77,7 +77,7 @@ export function renderCheer(S, el) {
   }
 
   if (!S.analysis) {
-    el.innerHTML = `<p class="muted">${simStatusLine(S)}</p>`;
+    el.innerHTML = simProgress(S);
     return;
   }
 
@@ -238,6 +238,26 @@ function simStatusLine(S) {
   if (S.results?.fetched_at) line += ` · last new result ${fmtTimestamp(S.results.fetched_at)}`;
   if (S.results?.checked_at) line += ` · checked ${fmtTimestamp(S.results.checked_at)}`;
   return line;
+}
+
+// Loading placeholder shown while the Monte Carlo runs. The .sim-progress
+// widget is updated in place by the worker's progress events (see app.js);
+// once the sim is done it collapses back to the plain status line.
+function simProgress(S) {
+  if (S.simStatus.state !== "running") return `<p class="muted">${simStatusLine(S)}</p>`;
+  const { done, total } = S.simStatus;
+  const p = total ? Math.round(100 * done / total) : 0;
+  return `
+    <div class="sim-progress card" role="progressbar" aria-label="Simulation progress"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}">
+      <div class="sim-progress-head">
+        <span class="sim-progress-spinner" aria-hidden="true"></span>
+        <span>Simulating <strong>${S.settings.nSims.toLocaleString()}</strong> tournaments…</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" style="width:${p}%"></div></div>
+      <p class="muted small"><span class="sim-progress-pct">${p}%</span> ·
+        <span class="sim-progress-count">${done.toLocaleString()}</span> of ${total.toLocaleString()}</p>
+    </div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +451,7 @@ export function renderPath(S, el) {
 
   const A = S.pathAnalysis;
   if (!A || A.team !== team || !A.baseline) {
-    el.innerHTML = `${picker}<p class="muted">${simStatusLine(S)}</p>`;
+    el.innerHTML = `${picker}${simProgress(S)}`;
     return;
   }
 
@@ -545,7 +565,7 @@ export function renderPath(S, el) {
 
 export function renderProbs(S, el) {
   if (!S.probs) {
-    el.innerHTML = `<p class="muted">${simStatusLine(S)}</p>`;
+    el.innerHTML = simProgress(S);
     return;
   }
 

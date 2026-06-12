@@ -184,8 +184,6 @@ select {
   border: 1.5px solid #4a5878; transition: border-color 0.15s, background 0.15s;
 }
 .ko-card li.sel .dot { background: var(--accent-2); border-color: var(--accent-2); }
-.ko-card li.more { cursor: pointer; }
-.ko-card li.more:hover { color: var(--accent-2); }
 .ko-card .result { margin: 0 0 8px; }
 .ko-card .matchups { margin-top: 10px; border-top: 1px solid var(--panel-2); padding-top: 8px; }
 .ko-card .matchups li { gap: 6px; }

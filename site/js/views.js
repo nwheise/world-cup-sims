@@ -160,9 +160,17 @@ export function renderCheer(S, el) {
   el.innerHTML = `
     <div class="card summary">
       <p><strong>Your matches:</strong> ${esc(attendedLabels)}</p>
-      <p><strong>Your top picks</strong> — chance each plays in front of you:</p>
+      <p><strong>⭐ Your top picks</strong> — chance each plays in front of you:</p>
+      ${(summary.pinnedTeams || []).length ? `
       <ul class="top-picks">
-        ${(summary.topTeams || []).map(({ team, p }) => `
+        ${summary.pinnedTeams.map(({ team, p }) => `
+          <li>${teamLabel(team)} <strong>${pct(p)}</strong>${bar(p)}</li>`).join("")}
+      </ul>` : `
+      <p class="muted small">No pinned teams yet — ⭐ star your absolute favorites in
+      <a href="#teams">My teams</a> and they'll be tracked here.</p>`}
+      <p><strong>Most likely teams you'll see:</strong></p>
+      <ul class="top-picks">
+        ${(summary.likelyTeams || []).map(({ team, p }) => `
           <li>${teamLabel(team)} <strong>${pct(p)}</strong>${bar(p)}</li>`).join("")}
       </ul>
       <p class="muted small">Recommendations below maximize your expected
@@ -357,17 +365,15 @@ export function renderProbs(S, el) {
     return;
   }
 
+  // Top 5 only — the long tail is noise (anyone below 5th rarely clears a few
+  // percent) and the expandable lists made the cards feel cluttered.
   const slotList = (entries, known, mid, slot, selected) => {
     if (known) return `<li class="locked">${teamLabel(known)} <strong>✓</strong></li>`;
-    const expanded = S.expandedSlots.has(`${mid}:${slot}`);
-    const top = expanded ? entries : entries.slice(0, 4);
-    const rest = entries.length - top.length;
-    return top.map(([t, p]) =>
+    return entries.slice(0, 5).map(([t, p]) =>
       `<li class="selectable ${t === selected ? "sel" : ""}" data-sel-team="${esc(t)}"
            data-mid="${esc(mid)}" data-slot="${slot}" title="Click to ask: how likely is this exact matchup?">
         <span class="dot" aria-hidden="true"></span><span>${teamLabel(t)}</span>
-        <span class="p">${pct(p)}</span>${bar(p)}</li>`).join("") +
-      (rest > 0 ? `<li class="muted small more" data-expand-slot data-mid="${esc(mid)}" data-slot="${slot}">+ ${rest} more…</li>` : "");
+        <span class="p">${pct(p)}</span>${bar(p)}</li>`).join("");
   };
 
   const koCard = (m, i) => {

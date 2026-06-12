@@ -40,7 +40,7 @@ const S = {
   settings: { nSims: 20000, ...load(LS.settings, {}) },
   pool: [], weights: {}, counts: new Map(), currentPair: null,
   cheerSort: "date", venueFilter: "",
-  matchupSel: {}, expandedSlots: new Set(),  // transient probe state (probs tab)
+  matchupSel: {},                            // transient probe state (probs tab)
   teamsNotice: null,                         // transient feedback (teams tab)
   lastReqId: 0,
 };
@@ -200,7 +200,7 @@ function onAttendedChanged() {
 
 function wireEvents() {
   document.addEventListener("click", (ev) => {
-    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-expand-slot]");
+    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team]");
     if (!t) return;
     if (t.dataset.tab) setTab(t.dataset.tab);
     else if (t.dataset.goto) setTab(t.dataset.goto);
@@ -261,9 +261,6 @@ function wireEvents() {
       const { mid, slot, selTeam } = t.dataset;
       const sel = (S.matchupSel[mid] ||= {});
       sel[slot] = sel[slot] === selTeam ? undefined : selTeam;
-      renderProbs(S, sections.probs);
-    } else if (t.dataset.expandSlot !== undefined) {
-      S.expandedSlots.add(`${t.dataset.mid}:${t.dataset.slot}`);
       renderProbs(S, sections.probs);
     }
   });

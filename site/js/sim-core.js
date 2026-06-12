@@ -457,26 +457,22 @@ export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}
 
   const mark = new Int32Array(nt).fill(-1);
   let totalU = 0, totalU2 = 0;
-  // Track P(in lineup) for the user's top 5 teams by weight (summary display).
-  const topIdxs = [...Array(nt).keys()]
-    .filter((t) => (weights[prep.teams[t]] ?? 0) > 0)
-    .sort((x, y) => (weights[prep.teams[y]] ?? 0) - (weights[prep.teams[x]] ?? 0))
-    .slice(0, 5);
-  const topIn = new Float64Array(topIdxs.length);
+  // P(team in lineup) for EVERY team — feeds the summary lists (pinned picks
+  // + most likely teams) at the cost of one increment per marked team.
+  const lineupCount = new Float64Array(nt);
 
   for (let s = 0; s < n; s++) {
     // Lineup = distinct teams across attended matches this sim.
     let u = 0;
     for (const g of attGroup) {
-      for (const t of [g.a, g.b]) if (mark[t] !== s) { mark[t] = s; u += ew[t]; }
+      for (const t of [g.a, g.b]) if (mark[t] !== s) { mark[t] = s; u += ew[t]; lineupCount[t] += 1; }
     }
     for (const i of attKo) {
       for (const t of [koTeams[s * 64 + 2 * i], koTeams[s * 64 + 2 * i + 1]]) {
-        if (mark[t] !== s) { mark[t] = s; u += ew[t]; }
+        if (mark[t] !== s) { mark[t] = s; u += ew[t]; lineupCount[t] += 1; }
       }
     }
     totalU += u; totalU2 += u * u;
-    for (let i = 0; i < topIdxs.length; i++) if (mark[topIdxs[i]] === s) topIn[i] += 1;
 
     for (let r = 0; r < groupRows.length; r++) {
       const g = groupRows[r];
@@ -569,17 +565,32 @@ export function analyzeCheer(prep, fixed, store, weights, attendedIds, opts = {}
   });
   rows.sort((x, y) => y.impact - x.impact);
 
-  const topTeams = topIdxs.map((t, i) => ({
+  // Summary lists: top teams by weight, the user's pinned teams, and the
+  // most likely lineup teams irrespective of preference.
+  const byWeight = [...Array(nt).keys()]
+    .filter((t) => (weights[prep.teams[t]] ?? 0) > 0)
+    .sort((x, y) => (weights[prep.teams[y]] ?? 0) - (weights[prep.teams[x]] ?? 0));
+  const entry = (t) => ({
     team: prep.teams[t],
     weight: weights[prep.teams[t]] ?? 0,
-    p: topIn[i] / n,
-  }));
+    p: lineupCount[t] / n,
+  });
+  const topTeams = byWeight.slice(0, 5).map(entry);
+  const pinnedTeams = [...pinnedSet]
+    .filter((name) => prep.ti.has(name))
+    .map((name) => entry(prep.ti.get(name)))
+    .sort((x, y) => y.p - x.p);
+  const likelyTeams = [...Array(nt).keys()]
+    .filter((t) => lineupCount[t] > 0)
+    .sort((x, y) => lineupCount[y] - lineupCount[x])
+    .slice(0, 6)
+    .map(entry);
   return {
     rows,
     summary: {
       nSims: n,
       baselineU: totalU / n,
-      topTeams,
+      topTeams, pinnedTeams, likelyTeams,
       topTeam: topTeams[0]?.team ?? null,
       pTopInLineup: topTeams[0]?.p ?? 0,
     },

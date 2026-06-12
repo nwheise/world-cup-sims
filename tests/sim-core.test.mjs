@@ -402,6 +402,15 @@ test("analyzeCheer: USA fan attending Seattle wants USA to win its group games",
   for (const { p, weight } of summary.topTeams) {
     assert.ok(p >= 0 && p <= 1 && weight > 0);
   }
+  // no pins -> empty pinned list; likely list is sorted by probability and
+  // led by Belgium (~58% via M82), independent of preferences
+  assert.deepEqual(summary.pinnedTeams, []);
+  assert.ok(summary.likelyTeams.length === 6);
+  assert.equal(summary.likelyTeams[0].team, "Belgium");
+  assert.ok(Math.abs(summary.likelyTeams[0].p - 0.58) < 0.06);
+  for (let i = 1; i < summary.likelyTeams.length; i++) {
+    assert.ok(summary.likelyTeams[i - 1].p >= summary.likelyTeams[i].p);
+  }
   assert.equal(rows.length, 72, "all group games scored, none played yet");
   // USA's three group games should advise rooting for USA, and they should be
   // among the highest-impact games (USA must WIN group D to route to Seattle).
@@ -481,6 +490,10 @@ test("analyzeCheer: never advises cheering against a pinned team", () => {
   // rooting FOR an (unpinned) favorite is never touched by the override
   const usaRow = pinned.rows.find((x) => x.a === "USA" || x.b === "USA");
   assert.equal(usaRow.pinnedOverride, null);
+  // pinned summary list carries Mexico with its lineup probability
+  assert.equal(pinned.summary.pinnedTeams.length, 1);
+  assert.equal(pinned.summary.pinnedTeams[0].team, "Mexico");
+  assert.ok(pinned.summary.pinnedTeams[0].p > 0 && pinned.summary.pinnedTeams[0].p < 0.3);
 });
 
 test("analyzeCheer: full-lineup optimization trades one liked team for a more-loved one", () => {

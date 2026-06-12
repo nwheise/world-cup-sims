@@ -59,16 +59,24 @@
   <h1>⚽ World Cup 2026 — who should I cheer for?</h1>
   <p class="tagline">A full-tournament Monte Carlo simulation, live-updating as results come
   in: see every team's odds to advance, win their group, or lift the trophy — and follow one
-  team's whole road ahead. <strong>Going to matches in person?</strong> Add your games and
-  get a personal cheer guide for who to root for in each one.</p>
+  team's whole road ahead. <strong>Going to matches in person?</strong> Add your games and the
+  cheer guide tells you who to cheer for in every match — so the teams you see live in
+  person are the best they can be.</p>
   <nav>
     <button data-tab="path">🧭 Team path</button>
     <button data-tab="probs">📊 Probabilities</button>
-    <span class="nav-sep" aria-hidden="true"></span>
-    <span class="nav-label">Attending a match?</span>
-    <button data-tab="matches">🎟️ My matches</button>
-    <button data-tab="teams">❤️ My teams</button>
-    <button data-tab="guide">🎺 Cheer guide</button>
+    <div class="nav-group" id="attend-group">
+      <button class="nav-group-toggle" data-nav-toggle aria-haspopup="true"
+              aria-expanded="false" aria-controls="attend-menu">
+        🎟️ Attending a match?<span class="caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="nav-group-menu" id="attend-menu" role="menu" hidden>
+        <p class="nav-group-hint">For matches you'll see in person:</p>
+        <button data-tab="matches" role="menuitem">🎟️ My matches</button>
+        <button data-tab="teams" role="menuitem">❤️ My teams</button>
+        <button data-tab="guide" role="menuitem">🎺 Cheer guide</button>
+      </div>
+    </div>
   </nav>
 </header>
 

@@ -38,7 +38,7 @@ const S = {
   comparisons: load(LS.comparisons, []),
   attended: new Set(load(LS.attended, [])),
   pinned: new Set(load(LS.pinned, [])),
-  settings: { nSims: 20000, ...load(LS.settings, {}) },
+  settings: { ...load(LS.settings, {}), nSims: 100000 },
   fanTeam: load(LS.fanTeam, null),
   pathAnalysis: null, pathSort: "date",
   pool: [], weights: {}, counts: new Map(), currentPair: null,
@@ -182,11 +182,19 @@ function onWorkerMessage(ev) {
   const msg = ev.data;
   if (msg.type === "progress") {
     S.simStatus = { state: "running", done: msg.done, total: msg.total };
-    const line = `Simulating… ${Math.round(100 * msg.done / msg.total)}%`;
-    for (const el of [sections.guide, sections.probs]) {
-      // Only touch a bare progress placeholder, never a rendered view.
-      const p = el.firstElementChild;
-      if (el.children.length === 1 && p?.matches("p.muted")) p.textContent = line;
+    const p = msg.total ? Math.round(100 * msg.done / msg.total) : 0;
+    // Update the loading placeholder's progress widget in place; the
+    // .sim-progress guard means we never touch an already-rendered view.
+    for (const el of [sections.guide, sections.probs, sections.path]) {
+      const box = el.querySelector(".sim-progress");
+      if (!box) continue;
+      box.setAttribute("aria-valuenow", p);
+      const fill = box.querySelector(".progress-fill");
+      if (fill) fill.style.width = `${p}%`;
+      const pctEl = box.querySelector(".sim-progress-pct");
+      if (pctEl) pctEl.textContent = `${p}%`;
+      const cntEl = box.querySelector(".sim-progress-count");
+      if (cntEl) cntEl.textContent = msg.done.toLocaleString();
     }
   } else if (msg.type === "simulated") {
     S.simStatus = { state: "done", done: msg.meta.nSims, total: msg.meta.nSims };
@@ -335,10 +343,6 @@ function wireEvents() {
     } else if (t.id === "venue-filter") {
       S.venueFilter = t.value;
       renderMatches(S, sections.matches);
-    } else if (t.id === "nsims") {
-      S.settings.nSims = +t.value;
-      save(LS.settings, S.settings);
-      startSimulation();
     }
   });
 

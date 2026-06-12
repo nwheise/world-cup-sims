@@ -23,6 +23,7 @@ test suite (see "Key findings").
 | `site/js/worker.js` | Web Worker wrapper: `simulate` once (progress events), then `analyze` (weights + attended matches) and `teampath` (followed team) requests are instant re-aggregations. |
 | `site/js/prefs.js` | Head-to-head preference ranking (Elo replay over the pick history): `computeScores` (supports `[a,b,"="]` equal-preference entries scored as draws, and optional priors), `ratingPriors` (FIFA ratings compressed into `INIT_ELO ± PRIOR_SPREAD/2 = ±150` — zero picks already means "best teams first", ~6 picks flip any prior gap), `computeWeights` (min-max to [0,1]), `applyPins` (pinned favorites locked at 1.0, unpinned compressed below `UNPINNED_CAP=0.85`), `pickPair` (adaptive most-informative pairing). |
 | `site/js/views.js`, `site/js/app.js`, `site/js/format.js` | Rendering (pure state→HTML), state/persistence/worker wiring (localStorage keys `wc26:comparisons`, `wc26:attended`, `wc26:pinned`, `wc26:settings`, `wc26:fanteam`), and display helpers (names/flags, venue-local kickoff times, viewer-local timestamps, slot descriptions). |
+| `site/js/schedule.js` | **Must-watch tab math** (pure — see "The must-watch math"): `scoreMatches` (per-match appeal from weights × appearance odds; no extra simulation), `buildTiers` (must/worth/rest; pinned teams' games always must-watch), `rankMap`, and the iCalendar export (`matchEvents`, `buildICS`, RFC 5545 escaping/folding, UTC stamps). `.ics` download wiring (`downloadICS`) lives in app.js. |
 | `site/data/tournament.json` | **Static facts** (committed): groups, ratings, all 104 matches with kickoffs/venues/slot codes, Annex C. Regenerate via `build_data.py` only if FIFA reschedules or ratings are refreshed. |
 | `site/data/results.json` | **Live results** (committed, refreshed by the cron): `group_results` keyed `"TeamA\|TeamB"` (90-min scores), `knockout` keyed `m73..m104` (participants once known; score + winner once played). |
 | `scripts/build_data.py` | Generates tournament.json. Self-contained: embeds GROUPS/RATINGS (see Model details) and fully validates `annex_c.txt` on every run (rows 1–495, every C(12,8) combo exactly once, per-row permutation, per-slot legality); cross-checks the fetched openfootball schedule against the verified third-place slot table below. |
@@ -180,6 +181,26 @@ no-results baseline.)
 - **Fan axiom**: the headline never roots against the followed team in its own games;
   when the math disagrees, `ownOverride.mathBest` carries the honest note (same
   philosophy as the cheer guide's `pinnedOverride`).
+
+## The must-watch math (in `site/js/schedule.js`; "📺 Must-watch" tab)
+
+- **The payoff of the My-teams ranking**: a personalized TV schedule. Match appeal =
+  expected emphasized preference of the teams on the pitch, with the SAME `emphasize`
+  curve as lineup quality so the features agree on what a favorite is worth: group games
+  `emphasize(w_a) + emphasize(w_b)`; knockout `Σ P(team appears)·emphasize(w)` using the
+  worker's already-serialized `appearanceProbs` — a pure client-side re-weighting, no
+  worker round-trip (so it re-renders instantly on every pick/pin). Played matches drop
+  out; locked knockout pairings collapse to certainty (slot lists become single entries).
+- **Tiers**: top `MUST_COUNT=10` by appeal are must-watch, next `WORTH_COUNT=15` worth a
+  watch, the rest collapsed. Every match featuring a pinned team is force-promoted to
+  must-watch (group games always; knockout once `P ≥ PIN_PROB_FLOOR = 0.5`) — fans don't
+  miss their own team's games, same philosophy as `pinnedOverride`. Tiers display
+  date-sorted (it's a schedule).
+- **Calendar export**: `buildICS` emits RFC 5545 (CRLF, 75-octet folding that never
+  splits a code point, TEXT escaping, kickoffs converted venue-offset→UTC, stable UIDs
+  `wc26-<id>@worldcupcheerguide.com`, DTSTAMP injected for deterministic tests); group
+  events 120 min, knockout 165 (ET/pens). `tests/schedule.test.mjs` covers scoring
+  identities, tier invariants, pin forcing, and the ICS format.
 
 ## Provenance / trust notes
 

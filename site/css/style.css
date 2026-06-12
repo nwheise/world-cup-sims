@@ -151,6 +151,12 @@ select {
 .top-picks li strong { margin-left: auto; font-variant-numeric: tabular-nums; }
 .top-picks .bar { width: 130px; margin: 0; }
 
+/* --- must-watch schedule --- */
+.chip.fav { background: var(--warn); color: #422006; font-weight: 600; }
+.reasons { margin: 6px 0 0; }
+.reasons .rk { color: var(--accent-2); }
+.cheer-card .toolbar { margin-top: 10px; }
+
 /* --- matches --- */
 .match-row {
   display: flex; gap: 10px; align-items: baseline; padding: 7px 10px;

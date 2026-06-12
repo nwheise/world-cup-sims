@@ -13,7 +13,9 @@ import { prepare, rankGroup } from "./sim-core.js";
 import { computeScores, computeCounts, computeWeights, applyPins, pickPair,
          ratingPriors } from "./prefs.js";
 import { displayName } from "./format.js";
-import { renderCheer, renderMatches, renderTeams, renderPath, renderProbs } from "./views.js";
+import { renderCheer, renderMatches, renderTeams, renderSchedule, renderPath,
+         renderProbs } from "./views.js";
+import { scoreMatches, buildTiers, matchEvents, buildICS } from "./schedule.js";
 
 const LS = {
   comparisons: "wc26:comparisons",
@@ -51,7 +53,7 @@ const S = {
 
 let worker = null;
 const $ = (sel) => document.querySelector(sel);
-const sections = { guide: null, matches: null, teams: null, path: null, probs: null };
+const sections = { guide: null, matches: null, teams: null, watch: null, path: null, probs: null };
 
 // --- derived state -----------------------------------------------------------
 
@@ -118,6 +120,7 @@ function renderAll() {
   renderCheer(S, sections.guide);
   renderMatches(S, sections.matches);
   renderTeams(S, sections.teams);
+  renderSchedule(S, sections.watch);
   renderPath(S, sections.path);
   renderProbs(S, sections.probs);
 }
@@ -139,6 +142,7 @@ function startSimulation() {
   S.analysis = null;
   S.pathAnalysis = null;
   renderCheer(S, sections.guide);
+  renderSchedule(S, sections.watch);
   renderPath(S, sections.path);
   renderProbs(S, sections.probs);
   worker.postMessage({
@@ -185,7 +189,7 @@ function onWorkerMessage(ev) {
     const p = msg.total ? Math.round(100 * msg.done / msg.total) : 0;
     // Update the loading placeholder's progress widget in place; the
     // .sim-progress guard means we never touch an already-rendered view.
-    for (const el of [sections.guide, sections.probs, sections.path]) {
+    for (const el of [sections.guide, sections.probs, sections.path, sections.watch]) {
       const box = el.querySelector(".sim-progress");
       if (!box) continue;
       box.setAttribute("aria-valuenow", p);
@@ -227,6 +231,30 @@ function setFanTeam(team) {
   schedulePathAnalyze();
 }
 
+/** Build and download a .ics calendar: a tier of the must-watch schedule
+ *  ({tier: "must"|"worth"}, worth = must + worth-a-watch) or one match
+ *  ({matchId}). Recomputed from current state — cheap and always fresh. */
+function downloadICS({ tier, matchId }) {
+  const scored = scoreMatches(S.allMatches, S.probs, S.weights, S.results);
+  let list, name;
+  if (matchId) {
+    list = scored.filter((s) => s.m.id === matchId);
+    name = `world-cup-2026-${matchId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.ics`;
+  } else {
+    const { must, worth } = buildTiers(scored, S.pinned);
+    list = tier === "worth" ? [...must, ...worth] : must;
+    list.sort((a, b) => a.m.kickoff.localeCompare(b.m.kickoff));
+    name = "world-cup-2026-must-watch.ics";
+  }
+  if (!list.length) return;
+  const ics = buildICS(matchEvents(list, S.weights, S.pinned), new Date());
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
 function onAttendedChanged() {
   save(LS.attended, [...S.attended]);
   computePool();
@@ -238,7 +266,7 @@ function onAttendedChanged() {
 
 function wireEvents() {
   document.addEventListener("click", (ev) => {
-    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-share],[data-info],[data-info-close]");
+    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-ics],[data-ics-tier],[data-share],[data-info],[data-info-close]");
     if (!t) return;
     if (t.dataset.tab) setTab(t.dataset.tab);
     else if (t.dataset.goto) setTab(t.dataset.goto);
@@ -249,6 +277,7 @@ function wireEvents() {
       nextPair([t.dataset.pick, t.dataset.loser]);
       computePrefs();
       renderTeams(S, sections.teams);
+      renderSchedule(S, sections.watch);
       scheduleAnalyze();
     } else if (t.dataset.tie !== undefined) {
       if (!S.currentPair) return;
@@ -258,6 +287,7 @@ function wireEvents() {
       nextPair(S.currentPair);
       computePrefs();
       renderTeams(S, sections.teams);
+      renderSchedule(S, sections.watch);
       scheduleAnalyze();
     } else if (t.dataset.skip !== undefined) {
       S.teamsNotice = null;
@@ -273,6 +303,7 @@ function wireEvents() {
       save(LS.comparisons, S.comparisons);
       computePrefs();
       renderTeams(S, sections.teams);
+      renderSchedule(S, sections.watch);
       scheduleAnalyze();
     } else if (t.dataset.resetPrefs !== undefined) {
       if (!confirm("Throw away all your team picks?")) return;
@@ -280,6 +311,7 @@ function wireEvents() {
       save(LS.comparisons, S.comparisons);
       computePrefs();
       renderTeams(S, sections.teams);
+      renderSchedule(S, sections.watch);
       S.analysis = null;
       renderCheer(S, sections.guide);
     } else if (t.dataset.clearAttended !== undefined) {
@@ -294,12 +326,17 @@ function wireEvents() {
       save(LS.pinned, [...S.pinned]);
       computePrefs();
       renderTeams(S, sections.teams);
+      renderSchedule(S, sections.watch);
       scheduleAnalyze();
     } else if (t.dataset.fanTeam !== undefined) {
       setFanTeam(t.dataset.fanTeam);
     } else if (t.dataset.pathSort) {
       S.pathSort = t.dataset.pathSort;
       renderPath(S, sections.path);
+    } else if (t.dataset.icsTier) {
+      downloadICS({ tier: t.dataset.icsTier });
+    } else if (t.dataset.ics) {
+      downloadICS({ matchId: t.dataset.ics });
     } else if (t.dataset.selTeam) {
       const { mid, slot, selTeam } = t.dataset;
       const sel = (S.matchupSel[mid] ||= {});

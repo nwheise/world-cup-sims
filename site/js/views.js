@@ -6,6 +6,7 @@
 
 import { teamLabel, displayName, flag, kickoffParts, fmtKickoff, fmtTimestamp,
          slotDesc, ROUND_SHORT, pct, esc } from "./format.js";
+import { scoreMatches, buildTiers, rankMap } from "./schedule.js";
 
 const bar = (p, cls = "") =>
   `<span class="bar ${cls}"><span style="width:${Math.max(0, Math.min(100, p * 100))}%"></span></span>`;
@@ -365,6 +366,9 @@ export function renderTeams(S, el) {
       ${S.teamsNotice ? `<p class="notice">${esc(S.teamsNotice)}</p>` : ""}
     </div>
     <h2>Your ranking <span class="muted small">(most → least want to see)</span></h2>
+    <p class="muted small">🍿 The payoff: your ranking powers the
+      <button class="btn small" data-goto="watch">📺 Must-watch</button> tab — your
+      cannot-miss matches in one schedule, exportable to your calendar.</p>
     <p class="muted small">Tap the star to pin a team as an absolute favorite
     (★ = pinned: locked at 1.00, and always ranked above every unpinned team —
     the rest top out at 0.85).</p>
@@ -378,6 +382,113 @@ export function renderTeams(S, el) {
           <span class="muted small">${w.toFixed(2)}${pinned ? " · pinned" : c < 2 ? " · few picks" : ""}</span>
         </li>`).join("")}
     </ol>`;
+}
+
+// ---------------------------------------------------------------------------
+// Must-watch (the payoff of the My-teams ranking: a personalized TV schedule)
+// ---------------------------------------------------------------------------
+
+export function renderSchedule(S, el) {
+  const haveTeams = S.comparisons.length > 0 || S.pinned.size > 0;
+
+  if (!S.probs) {
+    el.innerHTML = simProgress(S);
+    return;
+  }
+
+  const scored = scoreMatches(S.allMatches, S.probs, S.weights, S.results);
+  if (!scored.length) {
+    el.innerHTML = `<p class="muted">No matches left to watch — the tournament
+      is over. See you in 2030!</p>`;
+    return;
+  }
+  const { must, worth, rest } = buildTiers(scored, S.pinned);
+  const ranks = rankMap(S.weights, S.pinned);
+  const maxScore = Math.max(...scored.map((s) => s.score));
+
+  // Who's known/likely to be on the pitch, with the user's own rank for each.
+  const reasonsHtml = (s) => {
+    const tops = s.teams.filter(({ p, c }) => p >= 0.05 && c >= 0.02).slice(0, 3);
+    if (!tops.length) return "";
+    return `<p class="reasons muted small">${tops.map(({ team, p }) =>
+      `${teamLabel(team)} <span class="rk">your #${ranks.get(team) ?? "–"}${
+        p >= 0.995 ? "" : ` · ${pct(p)} to be here`}</span>`).join(" &nbsp; ")}</p>`;
+  };
+
+  const matchupHtml = (s) => {
+    const m = s.m;
+    if (m.kind === "group") return `${teamLabel(m.a)} <em>vs</em> ${teamLabel(m.b)}`;
+    if (s.slot1.length === 1 && s.slot2.length === 1) {
+      return `${teamLabel(s.slot1[0][0])} <em>vs</em> ${teamLabel(s.slot2[0][0])}`;
+    }
+    return `${esc(slotDesc(m.slot1))} <em>vs</em> ${esc(slotDesc(m.slot2))}`;
+  };
+
+  const hasPin = (s) =>
+    s.teams.some(({ team, p }) => S.pinned.has(team) && p >= 0.5);
+
+  const cardHtml = (s) => `
+    <article class="card cheer-card">
+      <div class="cheer-head">
+        ${matchChip(s.m)}
+        <span class="matchup">${matchupHtml(s)}</span>
+        ${hasPin(s) ? '<span class="chip fav">⭐ your favorite</span>' : ""}
+        ${S.attended.has(s.m.id) ? '<span class="chip attend">attending</span>' : ""}
+        <span class="when muted">${fmtKickoff(s.m.kickoff)} · ${esc(s.m.ground)}</span>
+      </div>
+      <div class="cheer-impact" title="Expected appeal of the teams on the pitch, by your ranking (1.0 ≈ one absolute favorite playing)">
+        ${bar(s.score / maxScore, "impact")}<span class="muted">watch score ${s.score.toFixed(2)}</span>
+      </div>
+      ${reasonsHtml(s)}
+      <div class="toolbar">
+        <button class="btn small" data-ics="${esc(s.m.id)}">📅 add to calendar</button>
+      </div>
+    </article>`;
+
+  const worthLine = (s) => {
+    const top = s.teams.filter(({ p, c }) => p >= 0.05 && c >= 0.02).slice(0, 2);
+    const because = top.length
+      ? ` — ${top.map(({ team, p }) =>
+          `${esc(displayName(team))} (your #${ranks.get(team) ?? "–"}${
+            p >= 0.995 ? "" : `, ${pct(p)}`})`).join(", ")}`
+      : "";
+    return `
+      <p class="note">• <strong>${matchupHtml(s)}</strong>
+      <span class="muted small">(${fmtKickoff(s.m.kickoff)} · ${esc(s.m.ground)})</span>${because}</p>`;
+  };
+
+  const restLabel = (s) => s.m.kind === "group"
+    ? `${esc(displayName(s.m.a))}–${esc(displayName(s.m.b))}`
+    : `M${s.m.num}`;
+
+  el.innerHTML = `
+    <div class="card">
+      <p>Your personalized TV guide: every remaining match, scored by how much
+      <em>you</em> want to watch it. Teams you ranked high (and ⭐ pinned) count
+      most; knockout slots are weighted by who's likely to fill them, so the
+      list sharpens as results come in.</p>
+      ${!haveTeams ? `<p class="warn">Using <strong>default preferences</strong>
+        (stronger teams ranked higher). Play the quick pick-two game in
+        <a href="#teams">My teams</a> to make this schedule yours.</p>` : ""}
+      <div class="toolbar">
+        <button class="btn" data-ics-tier="must">📅 Export must-watch to calendar
+          (${must.length} ${must.length === 1 ? "match" : "matches"}, .ics)</button>
+        <button class="btn small" data-ics-tier="worth">include “worth a watch” too</button>
+      </div>
+      <p class="muted small">The .ics file opens in Apple/Google/Outlook calendars.
+      Times shown here are venue-local; calendar events land in your own timezone.</p>
+      <p class="muted small">${simStatusLine(S)}</p>
+    </div>
+    <h2>🔥 Cannot-miss matches</h2>
+    ${must.map(cardHtml).join("")}
+    ${worth.length ? `
+      <h2>👀 Worth a watch</h2>
+      ${worth.map(worthLine).join("")}` : ""}
+    ${rest.length ? `
+      <details class="muted">
+        <summary>${rest.length} more matches rank lower for you</summary>
+        <p class="small">${rest.map(restLabel).join(", ")}.</p>
+      </details>` : ""}`;
 }
 
 // ---------------------------------------------------------------------------

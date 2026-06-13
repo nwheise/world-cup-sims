@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-06-12T22:02:40Z",
+ "fetched_at": "2026-06-13T03:24:27Z",
  "group_results": {
   "Canada|Bosnia-Herzegovina": [
    1,
@@ -11,6 +11,10 @@
   ],
   "South Korea|Czechia": [
    2,
+   1
+  ],
+  "USA|Paraguay": [
+   4,
    1
   ]
  },

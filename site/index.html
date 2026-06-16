@@ -27,6 +27,13 @@
 <body>
 <header>
   <div class="header-actions">
+    <button class="iconbtn" data-tm title="Time machine — rewind the odds" aria-label="Time machine">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M12 7v5l3 2"/>
+      </svg>
+    </button>
     <button class="iconbtn" data-info title="How this works" aria-label="How this works">
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -47,14 +54,6 @@
         16 8c0-4.42-3.58-8-8-8z"/>
       </svg>
     </a>
-    <button class="iconbtn" data-share title="Share this site" aria-label="Share this site">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
-        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-      </svg>
-    </button>
   </div>
   <h1>⚽ World Cup 2026 — who should I cheer for?</h1>
   <p class="tagline">A full-tournament Monte Carlo simulation that updates live as results
@@ -81,7 +80,23 @@
   <section id="tab-probs" hidden><p class="muted">Loading…</p></section>
 </main>
 
-<dialog id="info-dialog">
+<dialog id="tm-dialog" class="app-dialog">
+  <div class="dialog-head">
+    <h2>🕰 Time machine</h2>
+    <button class="iconbtn" data-tm-close title="Close" aria-label="Close">✕</button>
+  </div>
+  <p class="muted small">See the odds as they stood after an earlier match: every probability
+    re-derives using only the results played <strong>up to and including</strong> the match you
+    pick.</p>
+  <label class="tm-label" for="asof-date">Include results through:</label>
+  <div class="tm-controls">
+    <select id="asof-date" aria-label="Include results through this date"></select>
+    <select id="asof-match" aria-label="Include results through this match within the day" hidden></select>
+    <button class="btn small" data-asof-now hidden>Back to now</button>
+  </div>
+</dialog>
+
+<dialog id="info-dialog" class="app-dialog">
   <div class="dialog-head">
     <h2>How this works</h2>
     <button class="iconbtn" data-info-close title="Close" aria-label="Close">✕</button>

@@ -9,10 +9,10 @@
  *   cheer guide updates instantly as you click.
  */
 
-import { prepare, rankGroup } from "./sim-core.js";
+import { prepare, rankGroup, resultsAsOf } from "./sim-core.js";
 import { computeScores, computeCounts, computeWeights, applyPins, pickPair,
          ratingPriors } from "./prefs.js";
-import { displayName } from "./format.js";
+import { displayName, kickoffParts } from "./format.js";
 import { renderCheer, renderMatches, renderTeams, renderSchedule, renderPath,
          renderProbs } from "./views.js";
 import { scoreMatches, buildTiers, matchEvents, buildICS } from "./schedule.js";
@@ -31,7 +31,8 @@ const load = (k, fallback) => {
 const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 
 const S = {
-  tournament: null, results: null, prep: null,
+  tournament: null, rawResults: null, results: null, prep: null,
+  asOf: null, asOfLabel: null, played: [],
   allMatches: [], ko: [], koById: new Map(), groupById: new Map(),
   koKnown: {}, playedCount: 0, ratings: {}, standings: {},
   probs: null, groupProbs: null, meta: { nSims: 0, seed: 42 },
@@ -118,6 +119,84 @@ function setTab(tab) {
     $(`nav [data-tab="${name}"]`)?.classList.toggle("active", name === tab);
   }
   if (location.hash !== `#${tab}`) history.replaceState(null, "", `#${tab}`);
+}
+
+// --- time machine -----------------------------------------------------------
+//
+// The picker lets you re-run the whole simulation "as of" any earlier match:
+// a date dropdown, then a match-within-that-day dropdown for finer precision
+// (four-ish matches a day can each move the odds). The cutoff (S.asOf) is the
+// chosen match's kickoff ISO; resultsAsOf keeps only results up to that
+// instant, and everything downstream re-derives from the filtered S.results.
+
+/** Played matches in chronological order, each tagged for the picker. */
+function playedMatches() {
+  const out = [];
+  for (const m of S.allMatches) {
+    let score, a, b;
+    if (m.kind === "group") {
+      const r = S.rawResults?.group_results?.[m.id];
+      if (!r) continue;
+      [score, a, b] = [r, m.a, m.b];
+    } else {
+      const e = S.rawResults?.knockout?.[m.id];
+      if (!e?.winner || !e.score) continue;
+      [score, a, b] = [e.score, e.team1, e.team2];
+    }
+    const k = kickoffParts(m.kickoff);
+    const result = `${m.kind === "ko" ? `M${m.num} ` : ""}${displayName(a)} ${score[0]}–${score[1]} ${displayName(b)}`;
+    out.push({
+      m, dateKey: k.dateKey, dateLabel: k.dateLabel,
+      // Picker label carries the venue-local kickoff so same-day matches are
+      // distinguishable and the cutoff instant is obvious ("through this one").
+      label: `${k.timeLabel} — ${result}`,
+    });
+  }
+  return out.sort((x, y) => Date.parse(x.m.kickoff) - Date.parse(y.m.kickoff));
+}
+
+/** Recompute everything derived from raw results, filtered through `cutoff`. */
+function applyDerivedResults(cutoff) {
+  S.asOf = cutoff;
+  S.asOfLabel = cutoff ? S.played.find((p) => p.m.kickoff === cutoff)?.label ?? null : null;
+  S.results = resultsAsOf(S.tournament, S.rawResults, cutoff);
+  S.playedCount = Object.keys(S.results.group_results || {}).length;
+  S.koKnown = {};
+  for (const [id, entry] of Object.entries(S.results.knockout || {})) {
+    if (entry.team1 && entry.team2) S.koKnown[id] = [entry.team1, entry.team2];
+  }
+  computeStandings();
+}
+
+/** (Re)build the two cascading <select>s to reflect S.asOf. */
+function renderTimeMachine() {
+  const dateSel = $("#asof-date"), matchSel = $("#asof-match"), nowBtn = $("[data-asof-now]");
+  if (!dateSel) return;
+  const selDate = S.asOf ? S.asOf.slice(0, 10) : "";
+  // Newest day first, since the default "Latest results" sits at the top.
+  const dates = [...new Map(S.played.map((p) => [p.dateKey, p.dateLabel]))].reverse();
+  dateSel.innerHTML = `<option value="">Latest results</option>` +
+    dates.map(([key, label]) =>
+      `<option value="${key}"${key === selDate ? " selected" : ""}>${label}</option>`).join("");
+
+  const dayMatches = S.played.filter((p) => p.dateKey === selDate);
+  matchSel.hidden = !selDate || dayMatches.length === 0;
+  matchSel.innerHTML = dayMatches.map((p) =>
+    `<option value="${p.m.kickoff}"${p.m.kickoff === S.asOf ? " selected" : ""}>${p.label}</option>`).join("");
+  if (nowBtn) nowBtn.hidden = !S.asOf;
+  $("[data-tm]")?.classList.toggle("traveling", !!S.asOf);
+}
+
+/** Travel to `cutoff` (a match kickoff ISO, or null for "now"): re-filter
+ *  results, rebuild the picker, and re-run the one Monte Carlo. */
+function setAsOf(cutoff) {
+  if (cutoff === S.asOf) return;
+  applyDerivedResults(cutoff);
+  renderTimeMachine();
+  S.analysis = null;
+  S.pathAnalysis = null;
+  renderAll();            // matches/teams pick up the wound-back standings
+  startSimulation();      // guide/path/watch/probs re-render as progress, then refresh
 }
 
 // --- worker -----------------------------------------------------------------------
@@ -248,9 +327,10 @@ function onAttendedChanged() {
 
 function wireEvents() {
   document.addEventListener("click", (ev) => {
-    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-ics],[data-ics-tier],[data-share],[data-info],[data-info-close]");
+    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-ics],[data-ics-tier],[data-info],[data-info-close],[data-tm],[data-tm-close],[data-asof-now]");
     if (!t) return;
     if (t.dataset.tab) setTab(t.dataset.tab);
+    else if (t.dataset.asofNow !== undefined) setAsOf(null);
     else if (t.dataset.goto) setTab(t.dataset.goto);
     else if (t.dataset.pick) {
       S.comparisons.push([t.dataset.pick, t.dataset.loser]);
@@ -324,32 +404,24 @@ function wireEvents() {
       const sel = (S.matchupSel[mid] ||= {});
       sel[slot] = sel[slot] === selTeam ? undefined : selTeam;
       renderProbs(S, sections.probs);
-    } else if (t.dataset.share !== undefined) {
-      const data = {
-        title: "World Cup 2026 — who should I cheer for?",
-        url: "https://worldcupcheerguide.com/",
-      };
-      if (navigator.share) {
-        navigator.share(data).catch(() => {});  // user cancelled — fine
-      } else {
-        navigator.clipboard?.writeText(data.url).then(() => {
-          const icon = t.innerHTML;
-          t.innerHTML = "✓ copied";
-          setTimeout(() => { t.innerHTML = icon; }, 1500);
-        });
-      }
     } else if (t.dataset.info !== undefined) {
       $("#info-dialog")?.showModal();
     } else if (t.dataset.infoClose !== undefined) {
       $("#info-dialog")?.close();
+    } else if (t.dataset.tm !== undefined) {
+      $("#tm-dialog")?.showModal();
+    } else if (t.dataset.tmClose !== undefined) {
+      $("#tm-dialog")?.close();
     }
   });
 
   // Click on the dimmed backdrop closes the overlay (the dialog element
   // itself is only the click target when the click lands outside its box).
-  $("#info-dialog")?.addEventListener("click", (ev) => {
-    if (ev.target === ev.currentTarget) ev.currentTarget.close();
-  });
+  for (const id of ["#info-dialog", "#tm-dialog"]) {
+    $(id)?.addEventListener("click", (ev) => {
+      if (ev.target === ev.currentTarget) ev.currentTarget.close();
+    });
+  }
 
   document.addEventListener("change", (ev) => {
     const t = ev.target;
@@ -357,6 +429,13 @@ function wireEvents() {
       if (t.checked) S.attended.add(t.dataset.mid);
       else S.attended.delete(t.dataset.mid);
       onAttendedChanged();
+    } else if (t.id === "asof-date") {
+      // Picking a day jumps to that day's last match; "Now" clears the filter.
+      if (!t.value) { setAsOf(null); return; }
+      const day = S.played.filter((p) => p.dateKey === t.value);
+      setAsOf(day.length ? day[day.length - 1].m.kickoff : null);
+    } else if (t.id === "asof-match") {
+      setAsOf(t.value || null);
     } else if (t.id === "fan-team") {
       setFanTeam(t.value);
     } else if (t.id === "venue-filter") {
@@ -383,13 +462,12 @@ async function boot() {
       .catch(() => ({ group_results: {}, knockout: {} })),
   ]);
   S.tournament = tournament;
-  S.results = results;
+  S.rawResults = results;
   S.ratings = tournament.ratings;
   // The ranking pool is always all 48 teams — preferences feed every tab
   // (must-watch, cheer guide), not just attended matches.
   S.pool = Object.keys(S.ratings).sort();
   S.prep = prepare(tournament);
-  S.playedCount = Object.keys(results.group_results || {}).length;
 
   const groupMatches = tournament.group_games.map((g) => ({ kind: "group", ...g }));
   S.ko = tournament.knockout.map((m) => ({ kind: "ko", ...m }));
@@ -397,11 +475,11 @@ async function boot() {
     .sort((a, b) => a.kickoff.localeCompare(b.kickoff));
   S.groupById = new Map(groupMatches.map((m) => [m.id, m]));
   S.koById = new Map(S.ko.map((m) => [m.id, m]));
-  for (const [id, entry] of Object.entries(results.knockout || {})) {
-    if (entry.team1 && entry.team2) S.koKnown[id] = [entry.team1, entry.team2];
-  }
 
-  computeStandings();
+  // Time machine defaults to "now" (no filter) on first load.
+  S.played = playedMatches();
+  applyDerivedResults(null);
+  renderTimeMachine();
   computePrefs();
   renderAll();
   setTab(location.hash.slice(1) || "path");

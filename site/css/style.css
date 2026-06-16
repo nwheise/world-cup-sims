@@ -55,6 +55,16 @@ nav button {
 }
 nav button.active { background: var(--accent); color: #06281a; border-color: var(--accent); font-weight: 600; }
 
+/* Time machine: a header icon button that flags when wound back to the past. */
+.iconbtn { position: relative; }
+.iconbtn.traveling { color: var(--accent-2); }
+.iconbtn.traveling::after {
+  content: ""; position: absolute; top: 1px; right: 1px;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent-2);
+}
+.tm-label { display: block; font-weight: 600; font-size: 0.9rem; margin-top: 14px; }
+.tm-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+
 .card {
   background: var(--panel); border: 1px solid var(--panel-2);
   border-radius: var(--radius); padding: 14px 16px; margin: 10px 0;
@@ -237,15 +247,16 @@ select {
 .group-card td:first-child, .group-card th:first-child { text-align: left; }
 
 /* --- "How this works" overlay --- */
-#info-dialog {
+.app-dialog {
   background: var(--panel); color: var(--text);
   border: 1px solid var(--panel-2); border-radius: var(--radius);
   max-width: 640px; width: calc(100vw - 32px);
   max-height: 85vh; padding: 18px 22px;
 }
-#info-dialog::backdrop { background: rgba(4, 8, 18, 0.7); }
-#info-dialog .dialog-head { display: flex; align-items: center; justify-content: space-between; }
-#info-dialog .dialog-head h2 { margin: 0; }
+.app-dialog::backdrop { background: rgba(4, 8, 18, 0.7); }
+.app-dialog .dialog-head { display: flex; align-items: center; justify-content: space-between; }
+.app-dialog .dialog-head h2 { margin: 0; }
+#tm-dialog { max-width: 440px; }
 #info-dialog ul { color: var(--muted); font-size: 0.9rem; padding-left: 20px; }
 #info-dialog li { margin: 8px 0; }
 

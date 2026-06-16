@@ -10,6 +10,8 @@ Everything runs in your browser. There is no backend, no account, and nothing to
 a static GitHub Pages site, live results refreshed by a scheduled GitHub Action, and your
 picks stored in localStorage on your own device.
 
+Web Analytics with GoatCounter: https://worldcupcheerguide.goatcounter.com/
+
 ## What it does
 
 1. **🎟️ My matches** — check off any of the 104 matches you're attending.

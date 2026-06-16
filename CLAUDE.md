@@ -231,6 +231,15 @@ no-results baseline.)
   ordering, inclusive boundary, pristine-baseline equivalence to a no-results run, no input
   mutation).
 
+## Writing style (UI copy, comments, and chat)
+
+Write plainly. Be sparing with em dashes; they have been overused throughout this project.
+Prefer a period, a comma, or parentheses, and rewrite the sentence before reaching for one.
+Avoid the other tells of AI-generated prose: "X isn't just Y, it's Z" constructions,
+needless tricolons, "delve / leverage / robust / seamless" filler, and stacking three
+clauses where one will do. Short, direct sentences over clever ones. This applies to
+on-screen copy, code comments, commit messages, and replies.
+
 ## Provenance / trust notes
 
 - Groups, playoff results, match slots, kickoff times, ranking rules, and Annex C were all

@@ -236,7 +236,7 @@ function simStatusLine(S) {
   // Time machine: when wound back to an earlier match, the live-feed
   // timestamps are irrelevant — show the "as of" point instead.
   if (S.asOf) {
-    return `${line} · 🕰 as of ${S.asOfLabel ? esc(S.asOfLabel) : fmtTimestamp(S.asOf)}`;
+    return `${line} · 🕰 results through ${S.asOfLabel ? esc(S.asOfLabel) : fmtTimestamp(S.asOf)}`;
   }
   // fetched_at = when a score last actually changed (the committed file);
   // checked_at = when the deploy last consulted the live feed (stamped into

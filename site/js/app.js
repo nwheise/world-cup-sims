@@ -144,9 +144,12 @@ function playedMatches() {
       [score, a, b] = [e.score, e.team1, e.team2];
     }
     const k = kickoffParts(m.kickoff);
+    const result = `${m.kind === "ko" ? `M${m.num} ` : ""}${displayName(a)} ${score[0]}–${score[1]} ${displayName(b)}`;
     out.push({
       m, dateKey: k.dateKey, dateLabel: k.dateLabel,
-      label: `${m.kind === "ko" ? `M${m.num} ` : ""}${displayName(a)} ${score[0]}–${score[1]} ${displayName(b)}`,
+      // Picker label carries the venue-local kickoff so same-day matches are
+      // distinguishable and the cutoff instant is obvious ("through this one").
+      label: `${k.timeLabel} — ${result}`,
     });
   }
   return out.sort((x, y) => Date.parse(x.m.kickoff) - Date.parse(y.m.kickoff));
@@ -170,8 +173,9 @@ function renderTimeMachine() {
   const dateSel = $("#asof-date"), matchSel = $("#asof-match"), nowBtn = $("[data-asof-now]");
   if (!dateSel) return;
   const selDate = S.asOf ? S.asOf.slice(0, 10) : "";
-  const dates = [...new Map(S.played.map((p) => [p.dateKey, p.dateLabel]))];
-  dateSel.innerHTML = `<option value="">Now — latest results</option>` +
+  // Newest day first, since the default "Latest results" sits at the top.
+  const dates = [...new Map(S.played.map((p) => [p.dateKey, p.dateLabel]))].reverse();
+  dateSel.innerHTML = `<option value="">Latest results</option>` +
     dates.map(([key, label]) =>
       `<option value="${key}"${key === selDate ? " selected" : ""}>${label}</option>`).join("");
 
@@ -180,7 +184,7 @@ function renderTimeMachine() {
   matchSel.innerHTML = dayMatches.map((p) =>
     `<option value="${p.m.kickoff}"${p.m.kickoff === S.asOf ? " selected" : ""}>${p.label}</option>`).join("");
   if (nowBtn) nowBtn.hidden = !S.asOf;
-  $(".time-machine")?.classList.toggle("traveling", !!S.asOf);
+  $("[data-tm]")?.classList.toggle("traveling", !!S.asOf);
 }
 
 /** Travel to `cutoff` (a match kickoff ISO, or null for "now"): re-filter
@@ -323,7 +327,7 @@ function onAttendedChanged() {
 
 function wireEvents() {
   document.addEventListener("click", (ev) => {
-    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-ics],[data-ics-tier],[data-share],[data-info],[data-info-close],[data-asof-now]");
+    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-ics],[data-ics-tier],[data-info],[data-info-close],[data-tm],[data-tm-close],[data-asof-now]");
     if (!t) return;
     if (t.dataset.tab) setTab(t.dataset.tab);
     else if (t.dataset.asofNow !== undefined) setAsOf(null);
@@ -400,32 +404,24 @@ function wireEvents() {
       const sel = (S.matchupSel[mid] ||= {});
       sel[slot] = sel[slot] === selTeam ? undefined : selTeam;
       renderProbs(S, sections.probs);
-    } else if (t.dataset.share !== undefined) {
-      const data = {
-        title: "World Cup 2026 — who should I cheer for?",
-        url: "https://worldcupcheerguide.com/",
-      };
-      if (navigator.share) {
-        navigator.share(data).catch(() => {});  // user cancelled — fine
-      } else {
-        navigator.clipboard?.writeText(data.url).then(() => {
-          const icon = t.innerHTML;
-          t.innerHTML = "✓ copied";
-          setTimeout(() => { t.innerHTML = icon; }, 1500);
-        });
-      }
     } else if (t.dataset.info !== undefined) {
       $("#info-dialog")?.showModal();
     } else if (t.dataset.infoClose !== undefined) {
       $("#info-dialog")?.close();
+    } else if (t.dataset.tm !== undefined) {
+      $("#tm-dialog")?.showModal();
+    } else if (t.dataset.tmClose !== undefined) {
+      $("#tm-dialog")?.close();
     }
   });
 
   // Click on the dimmed backdrop closes the overlay (the dialog element
   // itself is only the click target when the click lands outside its box).
-  $("#info-dialog")?.addEventListener("click", (ev) => {
-    if (ev.target === ev.currentTarget) ev.currentTarget.close();
-  });
+  for (const id of ["#info-dialog", "#tm-dialog"]) {
+    $(id)?.addEventListener("click", (ev) => {
+      if (ev.target === ev.currentTarget) ev.currentTarget.close();
+    });
+  }
 
   document.addEventListener("change", (ev) => {
     const t = ev.target;

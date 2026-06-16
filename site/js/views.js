@@ -232,10 +232,15 @@ function simStatusLine(S) {
     const p = S.simStatus.total ? Math.round(100 * S.simStatus.done / S.simStatus.total) : 0;
     return `Simulating ${S.settings.nSims.toLocaleString()} tournaments… ${p}%`;
   }
+  let line = `${S.meta.nSims.toLocaleString()} simulated tournaments`;
+  // Time machine: when wound back to an earlier match, the live-feed
+  // timestamps are irrelevant — show the "as of" point instead.
+  if (S.asOf) {
+    return `${line} · 🕰 as of ${S.asOfLabel ? esc(S.asOfLabel) : fmtTimestamp(S.asOf)}`;
+  }
   // fetched_at = when a score last actually changed (the committed file);
   // checked_at = when the deploy last consulted the live feed (stamped into
   // the deployed copy only — absent on local/push-deployed copies).
-  let line = `${S.meta.nSims.toLocaleString()} simulated tournaments`;
   if (S.results?.fetched_at) line += ` · last new result ${fmtTimestamp(S.results.fetched_at)}`;
   if (S.results?.checked_at) line += ` · checked ${fmtTimestamp(S.results.checked_at)}`;
   return line;

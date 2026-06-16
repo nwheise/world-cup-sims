@@ -62,6 +62,13 @@
   team's run through the bracket. <strong>Going to matches in person?</strong> Add your games
   and the cheer guide tells you who to root for in every match, so you're more likely to see
   great teams play in front of you.</p>
+  <div class="time-machine" title="Re-simulate using only the results known as of a chosen match">
+    <label for="asof-date">🕰 Time machine</label>
+    <select id="asof-date" aria-label="Show the odds as of date"></select>
+    <select id="asof-match" aria-label="Show the odds as of match within the day" hidden></select>
+    <button class="btn small" data-asof-now hidden>Now</button>
+    <span class="tm-hint muted small">rewind to an earlier match to see the odds as they were then</span>
+  </div>
   <nav>
     <button data-tab="path">🧭 Team path</button>
     <button data-tab="probs">📊 Probabilities</button>

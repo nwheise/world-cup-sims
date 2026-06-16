@@ -133,6 +133,44 @@ export function prepareResults(prep, results) {
   return { scores, koWinner, koKnown, playedCount };
 }
 
+/**
+ * "Time machine" filter: return a copy of `results` containing only the
+ * matches that had kicked off at or before `cutoff` — an ISO timestamp,
+ * typically a chosen match's kickoff ("through this match"). Results carry no
+ * times of their own, so each is joined to its match in `tournament` by id
+ * (group games are keyed by the pair string = group_games[].id; knockout
+ * games by m73..m104 = knockout[].id) and judged by that match's scheduled
+ * kickoff. Comparison is by absolute instant (Date.parse honors each
+ * kickoff's venue offset), so matches on the same day are ordered correctly
+ * and a same-instant cutoff is inclusive.
+ *
+ * Dropping an unplayed knockout entry (including its known participants) is
+ * harmless: the simulation re-derives the bracket lineup deterministically
+ * from the pinned group/earlier-knockout results that DID happen by the
+ * cutoff. A falsy cutoff returns `results` unchanged.
+ */
+export function resultsAsOf(tournament, results, cutoff) {
+  if (!cutoff || !results) return results;
+  const cut = Date.parse(cutoff);
+  const kickoff = new Map();
+  for (const g of tournament.group_games) kickoff.set(g.id, g.kickoff);
+  for (const m of tournament.knockout) kickoff.set(m.id, m.kickoff);
+  // A result is visible iff its match kicked off at or before the cutoff.
+  // Unknown ids (shouldn't happen) are kept rather than silently lost.
+  const played = (id) => {
+    const k = kickoff.get(id);
+    return !k || Date.parse(k) <= cut;
+  };
+  const filterObj = (obj) => Object.fromEntries(
+    Object.entries(obj || {}).filter(([id]) => played(id)));
+  return {
+    ...results,
+    group_results: filterObj(results.group_results),
+    knockout: filterObj(results.knockout),
+    asOf: cutoff,
+  };
+}
+
 // --- Group ranking (official 2026 tiebreakers) -------------------------------
 
 /**

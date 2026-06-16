@@ -19,10 +19,10 @@ test suite (see "Key findings").
 | File | Purpose |
 |---|---|
 | `site/index.html`, `site/css/style.css` | Single-page app shell + styles (dark, mobile-friendly, no framework). |
-| `site/js/sim-core.js` | **The simulator + analysis engine** (pure ESM — identical in the Web Worker and under node tests). Official FIFA 2026 rules end to end; simulates all 104 matches, honoring real results (`prepareResults`): played group games pinned, known knockout winners honored when they match the simulated lineup. Packs per-sim records (~216 bytes: 72 group outcomes, 48 group positions, 64 knockout participants, 32 winners) so re-analysis never re-simulates. Hosts `appearanceProbs` (per-slot + full joint matchup distributions + champion), `groupProbs`, `analyzeCheer` (cheer guide incl. loyalty guard, per-liked-team conditionals, top-picks summary), `analyzeTeamPath` (fan mode — see "The team-path math"), `assessLoyalty`, `emphasize`. Constants: `EMPHASIS=2.0`, `LIKE_FLOOR=0.5`, `SWING_THRESHOLD=0.03`, seed 42, fixed 100k sims. |
+| `site/js/sim-core.js` | **The simulator + analysis engine** (pure ESM — identical in the Web Worker and under node tests). Official FIFA 2026 rules end to end; simulates all 104 matches, honoring real results (`prepareResults`): played group games pinned, known knockout winners honored when they match the simulated lineup. Packs per-sim records (~216 bytes: 72 group outcomes, 48 group positions, 64 knockout participants, 32 winners) so re-analysis never re-simulates. Hosts `appearanceProbs` (per-slot + full joint matchup distributions + champion), `groupProbs`, `analyzeCheer` (cheer guide incl. loyalty guard, per-liked-team conditionals, top-picks summary), `analyzeTeamPath` (fan mode — see "The team-path math"), `assessLoyalty`, `emphasize`, and `resultsAsOf` (the **time-machine filter** — see "The time-machine"). Constants: `EMPHASIS=2.0`, `LIKE_FLOOR=0.5`, `SWING_THRESHOLD=0.03`, seed 42, fixed 100k sims. |
 | `site/js/worker.js` | Web Worker wrapper: `simulate` once (progress events), then `analyze` (weights + attended matches) and `teampath` (followed team) requests are instant re-aggregations. |
 | `site/js/prefs.js` | Head-to-head preference ranking (Elo replay over the pick history): `computeScores` (supports `[a,b,"="]` equal-preference entries scored as draws, and optional priors), `ratingPriors` (FIFA ratings compressed into `INIT_ELO ± PRIOR_SPREAD/2 = ±150` — zero picks already means "best teams first", ~6 picks flip any prior gap), `computeWeights` (min-max to [0,1]), `applyPins` (pinned favorites locked at 1.0, unpinned compressed below `UNPINNED_CAP=0.85`), `pickPair` (information-maximizing pairing: scans all C(48,2) pairs for `(Σ 1/(1+count)) · H(E) / (1+timesAsked)` — outcome entropy × how poorly-located the teams are, repeats demoted; sampled from within `NEAR_BEST=0.9` of the top score). The ranking pool is always all 48 teams (it feeds Must-watch/cheer/path, not just attended matches). |
-| `site/js/views.js`, `site/js/app.js`, `site/js/format.js` | Rendering (pure state→HTML), state/persistence/worker wiring (localStorage keys `wc26:comparisons`, `wc26:attended`, `wc26:pinned`, `wc26:settings`, `wc26:fanteam`), and display helpers (names/flags, venue-local kickoff times, viewer-local timestamps, slot descriptions). |
+| `site/js/views.js`, `site/js/app.js`, `site/js/format.js` | Rendering (pure state→HTML), state/persistence/worker wiring (localStorage keys `wc26:comparisons`, `wc26:attended`, `wc26:pinned`, `wc26:settings`, `wc26:fanteam`), and display helpers (names/flags, venue-local kickoff times, viewer-local timestamps, slot descriptions). app.js also owns the **time-machine** picker (cascading date→match `<select>`s, `S.asOf` cutoff = chosen match's kickoff ISO; transient, not persisted — reload returns to "now"). |
 | `site/js/schedule.js` | **Must-watch tab math** (pure — see "The must-watch math"): `scoreMatches` (per-match appeal from weights × appearance odds; no extra simulation), `buildTiers` (must/worth/rest; pinned teams' games always must-watch), `rankMap`, and the iCalendar export (`matchEvents`, `buildICS`, RFC 5545 escaping/folding, UTC stamps). `.ics` download wiring (`downloadICS`) lives in app.js. |
 | `site/data/tournament.json` | **Static facts** (committed): groups, ratings, all 104 matches with kickoffs/venues/slot codes, Annex C. Regenerate via `build_data.py` only if FIFA reschedules or ratings are refreshed. |
 | `site/data/results.json` | **Live results** (committed, refreshed by the cron): `group_results` keyed `"TeamA\|TeamB"` (90-min scores), `knockout` keyed `m73..m104` (participants once known; score + winner once played). |
@@ -208,6 +208,28 @@ no-results baseline.)
   `wc26-<id>@worldcupcheerguide.com`, DTSTAMP injected for deterministic tests); group
   events 120 min, knockout 165 (ET/pens). `tests/schedule.test.mjs` covers scoring
   identities, tier invariants, pin forcing, and the ICS format.
+
+## The time-machine (in `site/js/sim-core.js` `resultsAsOf`; header picker)
+
+- **What it does**: re-runs the whole site "as of" any earlier match — wind back to right
+  after a chosen game and every tab (odds, group/champion probs, cheer guide, must-watch,
+  team path) shows what it looked like then. Default is "now" (no filter).
+- **The filter** (`resultsAsOf(tournament, results, cutoff)`, pure + tested): results carry
+  no times of their own, so each is joined to its match in tournament.json by id (group
+  results keyed by the pair string = `group_games[].id`; knockout by `m73..` = `knockout[].id`)
+  and kept iff its scheduled **kickoff instant ≤ cutoff**. Cutoff is the chosen match's
+  kickoff ISO; comparison is by absolute instant (`Date.parse` honors each venue offset), so
+  same-day matches order correctly and the boundary is inclusive. No change to results.json
+  or the cron pipeline — the datetime is already in tournament.json. Dropping an unplayed
+  knockout entry is harmless: the sim re-derives the bracket from the pinned earlier results.
+- **Picker** (app.js): cascading date→match `<select>`s ("date and then match within that
+  date" — four-ish games a day each move the odds). Picking a day jumps to that day's last
+  match; the match dropdown refines within it. `S.asOf` (the cutoff) is transient — not in
+  localStorage, so a reload returns to "now". Each pick re-filters `S.results` and re-runs
+  the one Monte Carlo (downstream tabs all derive from `S.results`). The status line shows
+  "🕰 as of …" while wound back. `tests/timemachine.test.mjs` covers the filter (instant
+  ordering, inclusive boundary, pristine-baseline equivalence to a no-results run, no input
+  mutation).
 
 ## Provenance / trust notes
 

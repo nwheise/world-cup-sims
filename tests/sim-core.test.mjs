@@ -321,9 +321,10 @@ test("computeScores: equal-preference entries pull scores together", () => {
 
 test("ratingPriors: zero picks already prefers stronger teams, but picks can flip it", () => {
   const priors = ratingPriors(tournament.ratings);
-  // compressed band around INIT_ELO, strongest at the top
-  assert.ok(Math.abs(priors.get("France") - (INIT_ELO + PRIOR_SPREAD / 2)) < 1e-9);
-  assert.ok(Math.abs(priors.get("Haiti") - (INIT_ELO - PRIOR_SPREAD / 2)) < 1e-9);
+  // compressed band around INIT_ELO, strongest at the top (Argentina is the
+  // top-rated team in the June 2026 ranking, New Zealand the lowest)
+  assert.ok(Math.abs(priors.get("Argentina") - (INIT_ELO + PRIOR_SPREAD / 2)) < 1e-9);
+  assert.ok(Math.abs(priors.get("New Zealand") - (INIT_ELO - PRIOR_SPREAD / 2)) < 1e-9);
   assert.ok(priors.get("Brazil") > priors.get("Iran"));
   // with NO picks, weights follow strength (France 1.0 ... Haiti 0.0)
   const pool = ["France", "Brazil", "Iran", "Haiti"];

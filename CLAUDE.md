@@ -98,12 +98,11 @@ and the per-slot allowed-group sets are encoded in `scripts/build_data.py`
 
 ## Model details (`site/js/sim-core.js`; data embedded in `scripts/build_data.py`)
 
-- **Ratings**: FIFA points from the **April 1, 2026** release for the published top ~20;
-  everything else is an estimate (marked in build_data.py). Fractional offsets (e.g.
-  1673.07) keep ratings unique because they double as the deterministic FIFA-ranking
-  tiebreaker. Ratings only enter via pairwise differences. **Improvement candidate**:
-  swap in Elo from eloratings.net or the final pre-tournament FIFA list (Argentina #1),
-  then re-run `build_data.py`.
+- **Ratings**: official FIFA points from the **June 11, 2026** release (the last ranking
+  before the tournament), all 48 teams (Argentina #1, then Spain, France). The published
+  two-decimal precision keeps every value unique, which matters because ratings double as
+  the deterministic FIFA-ranking tiebreaker. Ratings only enter via pairwise differences.
+  Re-run `build_data.py` if FIFA refreshes the list.
 - **Match model**: Elo expectation `E = 1/(1+10^(-diff/600))` (FIFA's 600 scale); goals are
   independent Poisson with `λ_a = 2.7·E`, `λ_b = 2.7·(1−E)` (2.7 = recent World Cup average
   total goals; the gap changes the split, not the sum). Knockout ties broken with
@@ -258,9 +257,7 @@ on-screen copy, code comments, commit messages, and replies.
 
 ## Next steps / backlog
 
-1. Swap estimated ratings for real Elo / the final June FIFA ranking, re-run
-   `scripts/build_data.py` (anchors in the JS tests may need loosening if ratings shift).
-2. Optionally simulate cards for the conduct tiebreaker (low value).
-3. Nice-to-haves: shareable URL state, what-if toggles for undecided games, conditional
+1. Optionally simulate cards for the conduct tiebreaker (low value).
+2. Nice-to-haves: shareable URL state, what-if toggles for undecided games, conditional
    queries ("P(USA in M94 | USA wins group)"), weight M94 above M82 in the objective
    (the R16 ticket is the marquee one).

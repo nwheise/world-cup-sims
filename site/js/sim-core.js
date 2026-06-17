@@ -1,11 +1,9 @@
 /*
- * sim-core.js — World Cup 2026 Monte Carlo simulator, ported from
- * seattle_wc_sim.py / cheer_guide.py and generalized: instead of tracking only
- * Seattle's two matches, every simulation records the participants and winner
- * of all 32 knockout matches plus every group finishing position, packed into
- * compact typed arrays. That lets the UI recompute personalized analyses
- * (different preference weights, different attended-match sets) instantly
- * without re-simulating.
+ * sim-core.js — World Cup 2026 Monte Carlo simulator. Every simulation records
+ * the participants and winner of all 32 knockout matches plus every group
+ * finishing position, packed into compact typed arrays. That lets the UI
+ * recompute personalized analyses (different preference weights, different
+ * attended-match sets) instantly without re-simulating.
  *
  * Pure module — no DOM, no fetch — so it runs identically in the Web Worker
  * and under `node --test` (tests/sim-core.test.mjs).

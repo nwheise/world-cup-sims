@@ -9,10 +9,8 @@ and an in-browser Monte Carlo simulation of the whole tournament tells you who t
 in every remaining game, plus preference-independent probabilities for every knockout slot,
 matchup, group, and the title.
 
-The project began as a Python CLI focused on the two Seattle matches (M82/M94 at Lumen
-Field); the site absorbed and generalized all of it, and the CLI was deleted June 12, 2026
-(git history has it). The Python findings remain the cross-validation anchors for the JS
-test suite (see "Key findings").
+An earlier Python implementation's published findings remain the cross-validation anchors
+for the JS test suite (see "Key findings"); the JS engine is asserted to reproduce them.
 
 ## Files
 
@@ -254,13 +252,17 @@ on-screen copy, code comments, commit messages, and replies.
 - After ANY change to `site/js` or the scripts: `node --test "tests/**/*.test.mjs"` and
   `python3 -m unittest test_update_results`. Browser smoke tests are driven via headless
   Chrome + CDP (navigate, click, screenshot — see git history for the pattern).
-- **Keep the whole site and docs consistent with any model/data change.** Facts like the
-  ratings source, model constants, or rules are described in several user-facing and
-  contributor-facing places, not just the code: the "How this works" dialog in
-  `site/index.html`, the "How it works" section of `README.md`, and the relevant sections
-  of this file. When you change something the user can read about (e.g. swapping the rating
-  source), grep the repo for the old description and update every copy in the same change,
-  so the explanation never lies about what the simulator actually does.
+- **Documentation is part of the change, not a follow-up — keep it in sync proactively, on
+  every change, without being asked.** The same facts (model constants like the sim count,
+  `EMPHASIS`, and the seed; the ratings source; the live-results source order and cron
+  cadence; the tab/feature list; the file layout; the rules) are described in four places
+  that drift apart easily: the "How this works" dialog in `site/index.html`, the "What it
+  does" / "How it works" sections of `README.md`, this file, and the explanatory comments
+  in the code and `.github/workflows/site.yml`. Whenever you change behavior, data, a
+  constant, a feature, or a file's role, update every place that describes it **in the same
+  commit**. The reliable way: grep the repo for the old number/word/description and fix
+  each hit. Treat a doc that no longer matches the code as a bug. Do this by default; a doc
+  refresh should never need to be requested separately.
 
 ## Next steps / backlog
 

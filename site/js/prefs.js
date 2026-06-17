@@ -1,5 +1,5 @@
 /*
- * prefs.js — head-to-head team preference ranking, ported from rank_prefs.py.
+ * prefs.js — head-to-head team preference ranking.
  *
  * You're shown two teams and pick the one you'd rather watch live; an
  * Elo-style score updates after each pick and the next pairing is chosen to be

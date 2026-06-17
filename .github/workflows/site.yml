@@ -1,6 +1,6 @@
 # Builds and deploys the static site to GitHub Pages, and — on the schedule —
-# refreshes site/data/results.json from openfootball first so the deployed
-# probabilities track the real tournament.
+# refreshes site/data/results.json (ESPN scoreboard first, openfootball as
+# fallback) so the deployed probabilities track the real tournament.
 #
 # One workflow on purpose: commits pushed with GITHUB_TOKEN do not trigger
 # other workflows, so the scheduled run must deploy Pages itself after

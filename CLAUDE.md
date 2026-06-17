@@ -254,6 +254,13 @@ on-screen copy, code comments, commit messages, and replies.
 - After ANY change to `site/js` or the scripts: `node --test "tests/**/*.test.mjs"` and
   `python3 -m unittest test_update_results`. Browser smoke tests are driven via headless
   Chrome + CDP (navigate, click, screenshot — see git history for the pattern).
+- **Keep the whole site and docs consistent with any model/data change.** Facts like the
+  ratings source, model constants, or rules are described in several user-facing and
+  contributor-facing places, not just the code: the "How this works" dialog in
+  `site/index.html`, the "How it works" section of `README.md`, and the relevant sections
+  of this file. When you change something the user can read about (e.g. swapping the rating
+  source), grep the repo for the old description and update every copy in the same change,
+  so the explanation never lies about what the simulator actually does.
 
 ## Next steps / backlog
 

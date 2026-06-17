@@ -40,8 +40,8 @@ Web Analytics with GoatCounter: https://worldcupcheerguide.goatcounter.com/
   correct — and the guide says so, with numbers.
 - **Match model**: goals are Poisson draws scaled by an Elo expectation on FIFA's 600-point
   scale (avg 2.7 goals/match); knockout ties break with a small skill edge as an ET/penalties
-  proxy. Ratings are April 2026 FIFA points (estimates for unranked teams). No host
-  advantage, no injuries — a planning toy, not a betting model.
+  proxy. Ratings are the official June 11, 2026 FIFA points, the last ranking before the
+  tournament. No host advantage, no injuries — a planning toy, not a betting model.
 - **Live results**: played games are pinned as fact and only the remainder is simulated, so
   every probability sharpens as the tournament unfolds. Results come from ESPN's public
   scoreboard API (keyless, near-live), with the public-domain

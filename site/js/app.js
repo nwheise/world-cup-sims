@@ -9,12 +9,12 @@
  *   cheer guide updates instantly as you click.
  */
 
-import { prepare, rankGroup, resultsAsOf } from "./sim-core.js";
+import { prepare, rankGroup, resultsAsOf, analyzeMatchCalibration } from "./sim-core.js";
 import { computeScores, computeCounts, computeWeights, applyPins, pickPair,
          ratingPriors } from "./prefs.js";
 import { displayName, kickoffParts } from "./format.js";
 import { renderCheer, renderMatches, renderTeams, renderSchedule, renderPath,
-         renderProbs } from "./views.js";
+         renderProbs, renderAccuracy } from "./views.js";
 import { scoreMatches, buildTiers, matchEvents, buildICS } from "./schedule.js";
 
 const LS = {
@@ -35,6 +35,8 @@ const S = {
   asOf: null, asOfLabel: null, played: [],
   allMatches: [], ko: [], koById: new Map(), groupById: new Map(),
   koKnown: {}, playedCount: 0, ratings: {}, standings: {},
+  matchCalibration: null,                    // per-match W/D/L accuracy (📈 tab)
+  calibBins: "uniform",                      // reliability-diagram bin scheme
   probs: null, groupProbs: null, meta: { nSims: 0, seed: 42 },
   simStatus: { state: "running", done: 0, total: 0 },
   analysis: null,
@@ -54,7 +56,7 @@ const S = {
 
 let worker = null;
 const $ = (sel) => document.querySelector(sel);
-const sections = { guide: null, matches: null, teams: null, watch: null, path: null, probs: null };
+const sections = { guide: null, matches: null, teams: null, watch: null, path: null, probs: null, accuracy: null };
 
 // --- derived state -----------------------------------------------------------
 
@@ -110,6 +112,7 @@ function renderAll() {
   renderSchedule(S, sections.watch);
   renderPath(S, sections.path);
   renderProbs(S, sections.probs);
+  renderAccuracy(S, sections.accuracy);
 }
 
 function setTab(tab) {
@@ -166,6 +169,12 @@ function applyDerivedResults(cutoff) {
     if (entry.team1 && entry.team2) S.koKnown[id] = [entry.team1, entry.team2];
   }
   computeStandings();
+  // Per-match W/D/L accuracy is rating-only and independent of the Monte Carlo,
+  // so grade it right here against the (time-machine-filtered) results.
+  const bins = S.calibBins === "fine"
+    ? [0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 1]
+    : undefined;
+  S.matchCalibration = analyzeMatchCalibration(S.prep, S.results, { bins });
 }
 
 /** (Re)build the two cascading <select>s to reflect S.asOf. */
@@ -327,9 +336,14 @@ function onAttendedChanged() {
 
 function wireEvents() {
   document.addEventListener("click", (ev) => {
-    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-ics],[data-ics-tier],[data-info],[data-info-close],[data-tm],[data-tm-close],[data-asof-now]");
+    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-ics],[data-ics-tier],[data-info],[data-info-close],[data-tm],[data-tm-close],[data-asof-now],[data-calib-bins]");
     if (!t) return;
     if (t.dataset.tab) setTab(t.dataset.tab);
+    else if (t.dataset.calibBins) {
+      S.calibBins = t.dataset.calibBins;
+      applyDerivedResults(S.asOf);   // recompute bins under the new scheme
+      renderAccuracy(S, sections.accuracy);
+    }
     else if (t.dataset.asofNow !== undefined) setAsOf(null);
     else if (t.dataset.goto) setTab(t.dataset.goto);
     else if (t.dataset.pick) {

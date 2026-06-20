@@ -7,9 +7,32 @@
 import { teamLabel, displayName, flag, kickoffParts, fmtKickoff, fmtTimestamp,
          slotDesc, ROUND_SHORT, pct, esc } from "./format.js";
 import { scoreMatches, buildTiers, rankMap } from "./schedule.js";
+import { matchWDL } from "./sim-core.js";
 
 const bar = (p, cls = "") =>
   `<span class="bar ${cls}"><span style="width:${Math.max(0, Math.min(100, p * 100))}%"></span></span>`;
+
+/**
+ * Predicted win/draw/loss odds for one match, as a segmented bar plus text.
+ * Group games always have known teams; knockout games show odds only once both
+ * participants are locked in (otherwise the matchup doesn't exist yet). The
+ * model is rating-only, so this is the same matchWDL the accuracy tab grades.
+ */
+function wdlMarkup(na, nb, ratings, knockout) {
+  const { pWin, pDraw, pLoss } = matchWDL(ratings[na], ratings[nb], knockout);
+  const w = (p) => `${Math.max(0, Math.min(100, p * 100))}%`;
+  const draw = knockout ? "" :
+    `<span class="wdl-seg wdl-d" style="width:${w(pDraw)}"></span>`;
+  const drawTxt = knockout ? "" : ` · draw ${pct(pDraw)}`;
+  return `
+    <span class="wdl" title="${esc(displayName(na))} win ${pct(pWin)}${drawTxt
+      } · ${esc(displayName(nb))} win ${pct(pLoss)}">
+      <span class="wdl-bar">
+        <span class="wdl-seg wdl-w" style="width:${w(pWin)}"></span>${draw}<span class="wdl-seg wdl-l" style="width:${w(pLoss)}"></span>
+      </span>
+      <span class="wdl-pct muted small">${pct(pWin)}${drawTxt} · ${pct(pLoss)}</span>
+    </span>`;
+}
 
 /**
  * "How this result moves your teams" — per liked team, P(they end up in your
@@ -285,11 +308,12 @@ export function renderMatches(S, el) {
   const rowHtml = (m) => {
     const checked = S.attended.has(m.id) ? "checked" : "";
     const { timeLabel } = kickoffParts(m.kickoff);
-    let label;
+    let label, wdl = "";
     if (m.kind === "group") {
       const res = S.results?.group_results?.[m.id];
       label = `${teamLabel(m.a)} <em>vs</em> ${teamLabel(m.b)}` +
         (res ? ` <span class="score">${res[0]}–${res[1]}</span>` : "");
+      wdl = wdlMarkup(m.a, m.b, S.ratings, false);
     } else {
       const known = S.koKnown[m.id];
       const played = S.results?.knockout?.[m.id];
@@ -297,6 +321,7 @@ export function renderMatches(S, el) {
         ? `${teamLabel(known[0])} <em>vs</em> ${teamLabel(known[1])}` +
           (played?.score ? ` <span class="score">${played.score[0]}–${played.score[1]}</span>` : "")
         : `${esc(slotDesc(m.slot1))} <em>vs</em> ${esc(slotDesc(m.slot2))}`;
+      if (known) wdl = wdlMarkup(known[0], known[1], S.ratings, true);
     }
     return `
       <label class="match-row ${checked ? "selected" : ""}">
@@ -305,6 +330,7 @@ export function renderMatches(S, el) {
         ${matchChip(m)}
         <span class="label">${label}</span>
         <span class="venue muted">${esc(m.ground)}</span>
+        ${wdl}
       </label>`;
   };
 
@@ -821,4 +847,111 @@ export function renderProbs(S, el) {
     <h2>Group stage</h2>
     <div class="grid groups">${"ABCDEFGHIJKL".split("").map(groupCard).join("")}</div>
     ${koSections}`;
+}
+
+// ---------------------------------------------------------------------------
+// Accuracy (reliability of the per-match W/D/L model)
+// ---------------------------------------------------------------------------
+
+// Reliability diagram as inline SVG: each non-empty bin is a dot at (mean
+// predicted probability, observed frequency), sized by how many forecasts it
+// holds, with a 95% Wilson whisker. A well-calibrated model hugs the diagonal.
+function reliabilityDiagram(bins) {
+  const W = 300, H = 300, pad = 38;
+  const X = (v) => pad + v * (W - 2 * pad);
+  const Y = (v) => H - pad - v * (H - 2 * pad);
+  const pts = bins.filter((b) => b.meanPred != null);
+  const maxN = Math.max(1, ...pts.map((b) => b.n));
+  const dot = (b) => {
+    const r = 3 + 5 * Math.sqrt(b.n / maxN), cx = X(b.meanPred);
+    const whisker = b.wilsonLo != null
+      ? `<line x1="${cx}" y1="${Y(b.wilsonLo)}" x2="${cx}" y2="${Y(b.wilsonHi)}" class="calib-whisker"/>`
+      : "";
+    return `${whisker}<circle cx="${cx}" cy="${Y(b.obsFreq)}" r="${r.toFixed(1)}" class="calib-dot"><title>predicted ~${pct(b.meanPred)}, happened ${pct(b.obsFreq)} (n=${b.n})</title></circle>`;
+  };
+  const ticks = [0, 0.25, 0.5, 0.75, 1];
+  return `
+    <svg class="calib-svg" viewBox="0 0 ${W} ${H}" role="img"
+         aria-label="Reliability diagram: predicted probability versus observed frequency">
+      ${ticks.map((v) => `
+        <line x1="${X(v)}" y1="${Y(0)}" x2="${X(v)}" y2="${Y(1)}" class="calib-grid"/>
+        <line x1="${X(0)}" y1="${Y(v)}" x2="${X(1)}" y2="${Y(v)}" class="calib-grid"/>
+        <text x="${X(v)}" y="${Y(0) + 15}" class="calib-axis" text-anchor="middle">${Math.round(v * 100)}</text>
+        <text x="${X(0) - 7}" y="${Y(v) + 3}" class="calib-axis" text-anchor="end">${Math.round(v * 100)}</text>`).join("")}
+      <line x1="${X(0)}" y1="${Y(0)}" x2="${X(1)}" y2="${Y(1)}" class="calib-diag"/>
+      ${pts.map(dot).join("")}
+      <text x="${X(0.5)}" y="${H - 3}" class="calib-axis" text-anchor="middle">predicted %</text>
+      <text x="11" y="${Y(0.5)}" class="calib-axis" text-anchor="middle" transform="rotate(-90 11 ${Y(0.5)})">observed %</text>
+    </svg>`;
+}
+
+export function renderAccuracy(S, el) {
+  const cal = S.matchCalibration;
+  const status = S.asOf
+    ? `🕰 results through ${S.asOfLabel ? esc(S.asOfLabel) : fmtTimestamp(S.asOf)}`
+    : (S.results?.fetched_at ? `Results through ${fmtTimestamp(S.results.fetched_at)}` : "");
+
+  if (!cal || !cal.count) {
+    el.innerHTML = `
+      <div class="card">
+        <h2>📈 Prediction accuracy</h2>
+        <p class="muted">No matches have been played${S.asOf ? " by this point" : " yet"}.
+        Once games are in, this tab grades the model's win/draw/loss predictions against what
+        actually happened.</p>
+        ${status ? `<p class="muted small">${status}</p>` : ""}
+      </div>`;
+    return;
+  }
+
+  const g = cal.byCategory.group, k = cal.byCategory.ko;
+  const catRow = (label, c) => c.count
+    ? `<tr><td>${label}</td><td>${c.count}</td><td>${c.brier != null ? c.brier.toFixed(3) : "—"}</td></tr>`
+    : "";
+
+  el.innerHTML = `
+    <div class="card summary">
+      <h2>📈 Prediction accuracy</h2>
+      <p>How well-calibrated are the model's match predictions? Of all the calls made near a
+      given probability, about that share should actually come true, so the points below
+      should hug the diagonal.</p>
+      ${status ? `<p class="muted small">${status}</p>` : ""}
+    </div>
+
+    <div class="card calib">
+      <div class="calib-head">
+        <div>
+          <div class="big-stat">${cal.brier.toFixed(3)}</div>
+          <div class="muted small">Brier score (lower is better) · ${cal.count} forecast points
+          from ${g.count / 3} group + ${k.count / 2} knockout matches</div>
+        </div>
+        <div class="calib-bins">
+          <button class="btn small ${S.calibBins !== "fine" ? "active" : ""}" data-calib-bins="uniform">Even bins</button>
+          <button class="btn small ${S.calibBins === "fine" ? "active" : ""}" data-calib-bins="fine">Fine low end</button>
+        </div>
+      </div>
+      ${reliabilityDiagram(cal.bins)}
+      <table class="calib-cat">
+        <tr><th>Category</th><th>Points</th><th>Brier</th></tr>
+        ${catRow("Group games (W/D/L)", g)}
+        ${catRow("Knockout games (W/L)", k)}
+      </table>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary class="muted">How to read this, and the caveats</summary>
+        <ul class="muted small caveats">
+          <li>Each played match contributes a few forecast points: a group game gives three
+          (its predicted win, draw, and loss odds, each scored 1 if it happened), a knockout
+          game two (win/loss).</li>
+          <li>A dot sits at the average predicted probability in its bin (x) versus the
+          fraction that actually happened (y); dot size is the number of forecasts, and the
+          whisker is a 95% Wilson interval, so sparse bins are visibly noisy.</li>
+          <li>This is <strong>one tournament</strong>, and outcomes within it are correlated,
+          so read it as descriptive, not a verdict.</li>
+          <li>The model is rating-only (no form, injuries, or host advantage), and knockout
+          draws are folded into win/loss by the extra-time/penalties proxy.</li>
+        </ul>
+      </details>
+    </div>`;
 }

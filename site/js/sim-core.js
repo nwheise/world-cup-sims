@@ -63,6 +63,42 @@ export function simulateMatch(ra, rb, knockout, rnd) {
   return [ga, gb];
 }
 
+const WDL_KMAX = 25; // Poisson tail beyond 25 goals is ~0 for lambda <= 2.7
+
+/**
+ * Closed-form win/draw/loss probabilities for a single match, from team a's
+ * perspective. The model is rating-only (goals are independent Poisson with
+ * lambda_a = BASE_GOALS*E, lambda_b = BASE_GOALS*(1-E)), so this is exact — no
+ * Monte Carlo. For knockout games the draw mass is folded into win/loss by the
+ * same ET/penalties proxy simulateMatch uses (so pDraw = 0). Returns
+ * { pWin, pDraw, pLoss }; the three sum to 1 within floating-point slack.
+ */
+export function matchWDL(ra, rb, knockout = false) {
+  const e = expectedScore(ra, rb);
+  const pmf = (lam) => {
+    const out = new Float64Array(WDL_KMAX + 1);
+    let p = Math.exp(-lam);
+    out[0] = p;
+    for (let k = 1; k <= WDL_KMAX; k++) { p *= lam / k; out[k] = p; }
+    return out;
+  };
+  const pa = pmf(BASE_GOALS * e), pb = pmf(BASE_GOALS * (1 - e));
+  let pWin = 0, pDraw = 0, pLoss = 0;
+  for (let i = 0; i <= WDL_KMAX; i++) {
+    for (let j = 0; j <= WDL_KMAX; j++) {
+      const m = pa[i] * pb[j];
+      if (i > j) pWin += m; else if (i === j) pDraw += m; else pLoss += m;
+    }
+  }
+  if (knockout) {
+    const pAdvA = 0.5 + 0.4 * (e - 0.5);
+    pWin += pDraw * pAdvA;
+    pLoss += pDraw * (1 - pAdvA);
+    pDraw = 0;
+  }
+  return { pWin, pDraw, pLoss };
+}
+
 // --- Data preparation --------------------------------------------------------
 
 /**
@@ -371,6 +407,108 @@ export function groupProbs(prep, store) {
     second: pos[1].map((c) => c / n),
     third: pos[2].map((c) => c / n),
     advance: Array.from(reach, (c) => c / n),
+  };
+}
+
+// --- Per-match accuracy (calibration of the W/D/L model) -------------------------
+
+// Default reliability-diagram bins: ten equal-width buckets on [0, 1].
+export const CALIB_BINS = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
+
+// Which bucket a probability falls in, given monotonic edge array (len B+1).
+// The final bucket is closed on the right so p === 1 lands in it.
+function binOf(edges, p) {
+  for (let i = 1; i < edges.length - 1; i++) if (p < edges[i]) return i - 1;
+  return edges.length - 2;
+}
+
+// Wilson 95% score interval for k successes in n trials — honest error bars
+// that stay tight for big bins and wide for small ones (no dependencies).
+function wilson(k, n, z = 1.96) {
+  if (!n) return [null, null];
+  const phat = k / n, z2 = z * z, denom = 1 + z2 / n;
+  const center = (phat + z2 / (2 * n)) / denom;
+  const half = z * Math.sqrt(phat * (1 - phat) / n + z2 / (4 * n * n)) / denom;
+  return [Math.max(0, center - half), Math.min(1, center + half)];
+}
+
+function buildBins(points, edges) {
+  const acc = Array.from({ length: edges.length - 1 },
+    (_, i) => ({ lo: edges[i], hi: edges[i + 1], n: 0, sumP: 0, sumO: 0 }));
+  for (const { p, o } of points) {
+    const b = acc[binOf(edges, p)];
+    b.n += 1; b.sumP += p; b.sumO += o;
+  }
+  return acc.map((b) => {
+    const [wlo, whi] = wilson(b.sumO, b.n);
+    return {
+      lo: b.lo, hi: b.hi, n: b.n,
+      meanPred: b.n ? b.sumP / b.n : null,
+      obsFreq: b.n ? b.sumO / b.n : null,
+      wilsonLo: wlo, wilsonHi: whi,
+    };
+  });
+}
+
+const brierOf = (points) => points.length
+  ? points.reduce((s, { p, o }) => s + (p - o) * (p - o), 0) / points.length
+  : null;
+
+const summarize = (points, edges) => ({
+  brier: brierOf(points), count: points.length, bins: buildBins(points, edges),
+});
+
+/**
+ * Grade the model's predicted win/draw/loss against what actually happened, for
+ * every played match. Each match becomes several binary forecast/outcome points
+ * (group: three, one per W/D/L class; knockout: two, win/loss) so a reliability
+ * diagram can ask "of all the calls near p, did about p of them come true?".
+ *
+ * Honors the time machine implicitly: pass results already filtered through
+ * resultsAsOf and only matches played by that cutoff are graded. Truth is read
+ * from the scores in `results`; forecasts are the rating-only matchWDL, so no
+ * simulation, store, or replay is needed. Returns
+ *   { bins, brier, count, byCategory: { group, ko }, points, meta:{ bins } }.
+ */
+export function analyzeMatchCalibration(prep, results, opts = {}) {
+  const edges = opts.bins || CALIB_BINS;
+  const { ratings, groupGames, ko, ti } = prep;
+  const points = [];
+
+  const gr = results?.group_results || {};
+  for (const g of groupGames) {
+    const res = gr[g.id];
+    if (!res) continue;
+    const [ga, gb] = res;
+    const { pWin, pDraw, pLoss } = matchWDL(ratings[g.a], ratings[g.b], false);
+    const cls = ga > gb ? "W" : ga < gb ? "L" : "D";
+    points.push({ p: pWin, o: cls === "W" ? 1 : 0, category: "group", id: g.id });
+    points.push({ p: pDraw, o: cls === "D" ? 1 : 0, category: "group", id: g.id });
+    points.push({ p: pLoss, o: cls === "L" ? 1 : 0, category: "group", id: g.id });
+  }
+
+  const koRes = results?.knockout || {};
+  for (const m of ko) {
+    const e = koRes[m.id];
+    if (!e || !e.winner) continue;
+    const t1 = ti.get(e.team1), t2 = ti.get(e.team2), w = ti.get(e.winner);
+    if (t1 === undefined || t2 === undefined || w === undefined) continue;
+    const { pWin, pLoss } = matchWDL(ratings[t1], ratings[t2], true);
+    const t1won = w === t1 ? 1 : 0;
+    points.push({ p: pWin, o: t1won, category: "ko", id: m.id });
+    points.push({ p: pLoss, o: t1won ? 0 : 1, category: "ko", id: m.id });
+  }
+
+  return {
+    bins: buildBins(points, edges),
+    brier: brierOf(points),
+    count: points.length,
+    byCategory: {
+      group: summarize(points.filter((x) => x.category === "group"), edges),
+      ko: summarize(points.filter((x) => x.category === "ko"), edges),
+    },
+    points,
+    meta: { bins: edges },
   };
 }
 

@@ -260,9 +260,41 @@ select {
 #info-dialog ul { color: var(--muted); font-size: 0.9rem; padding-left: 20px; }
 #info-dialog li { margin: 8px 0; }
 
+/* --- per-match W/D/L odds (match rows) --- */
+.wdl { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.wdl-bar {
+  display: inline-flex; width: 90px; height: 7px; border-radius: 4px;
+  overflow: hidden; background: #0a0f1c;
+}
+.wdl-seg { height: 100%; }
+.wdl-seg.wdl-w { background: var(--accent); }
+.wdl-seg.wdl-d { background: #475569; }
+.wdl-seg.wdl-l { background: var(--accent-2); }
+.wdl-pct { white-space: nowrap; }
+
+/* --- accuracy / reliability diagram --- */
+.calib-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.big-stat { font-size: 1.8rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
+.calib-bins { display: flex; gap: 6px; }
+.calib-svg { display: block; width: 100%; max-width: 320px; margin: 6px auto; }
+.calib-grid { stroke: var(--panel-2); stroke-width: 1; }
+.calib-diag { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
+.calib-dot { fill: var(--accent); fill-opacity: 0.85; }
+.calib-whisker { stroke: var(--accent-2); stroke-width: 1.5; }
+.calib-axis { fill: var(--muted); font-size: 10px; }
+.calib-cat { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.9rem; }
+.calib-cat th, .calib-cat td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--panel-2); }
+.calib-cat th { color: var(--accent-2); font-weight: 600; }
+.caveats { padding-left: 18px; }
+.caveats li { margin: 6px 0; }
+
 @media (max-width: 640px) {
   .grid { grid-template-columns: 1fr; }
   .ranking .rk-team { flex-basis: 150px; }
   .cheer-head .when { margin-left: 0; }
   .match-row .time { width: 60px; }
+  .wdl-bar { width: 64px; }
 }

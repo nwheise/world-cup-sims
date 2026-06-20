@@ -13,24 +13,28 @@ const bar = (p, cls = "") =>
   `<span class="bar ${cls}"><span style="width:${Math.max(0, Math.min(100, p * 100))}%"></span></span>`;
 
 /**
- * Predicted win/draw/loss odds for one match, as a segmented bar plus text.
- * Group games always have known teams; knockout games show odds only once both
- * participants are locked in (otherwise the matchup doesn't exist yet). The
- * model is rating-only, so this is the same matchWDL the accuracy tab grades.
+ * Predicted win/draw/loss odds for one match, as its own line: a segmented bar
+ * plus team-anchored labels (flag % · draw % · flag %). Group games always have
+ * known teams; knockout games show odds only once both participants are locked
+ * (otherwise the matchup doesn't exist yet). The model is rating-only, so this
+ * is the same matchWDL the accuracy tab grades.
  */
 function wdlMarkup(na, nb, ratings, knockout) {
   const { pWin, pDraw, pLoss } = matchWDL(ratings[na], ratings[nb], knockout);
   const w = (p) => `${Math.max(0, Math.min(100, p * 100))}%`;
-  const draw = knockout ? "" :
-    `<span class="wdl-seg wdl-d" style="width:${w(pDraw)}"></span>`;
-  const drawTxt = knockout ? "" : ` · draw ${pct(pDraw)}`;
+  const segs = knockout
+    ? `<span class="wdl-seg wdl-w" style="width:${w(pWin)}"></span><span class="wdl-seg wdl-l" style="width:${w(pLoss)}"></span>`
+    : `<span class="wdl-seg wdl-w" style="width:${w(pWin)}"></span><span class="wdl-seg wdl-d" style="width:${w(pDraw)}"></span><span class="wdl-seg wdl-l" style="width:${w(pLoss)}"></span>`;
+  const labels = knockout
+    ? `${flag(na)} ${pct(pWin)} · ${flag(nb)} ${pct(pLoss)}`
+    : `${flag(na)} ${pct(pWin)} · draw ${pct(pDraw)} · ${flag(nb)} ${pct(pLoss)}`;
+  const title = knockout
+    ? `${displayName(na)} win ${pct(pWin)} · ${displayName(nb)} win ${pct(pLoss)}`
+    : `${displayName(na)} win ${pct(pWin)} · draw ${pct(pDraw)} · ${displayName(nb)} win ${pct(pLoss)}`;
   return `
-    <span class="wdl" title="${esc(displayName(na))} win ${pct(pWin)}${drawTxt
-      } · ${esc(displayName(nb))} win ${pct(pLoss)}">
-      <span class="wdl-bar">
-        <span class="wdl-seg wdl-w" style="width:${w(pWin)}"></span>${draw}<span class="wdl-seg wdl-l" style="width:${w(pLoss)}"></span>
-      </span>
-      <span class="wdl-pct muted small">${pct(pWin)}${drawTxt} · ${pct(pLoss)}</span>
+    <span class="match-odds" title="${esc(title)}">
+      <span class="wdl-bar">${segs}</span>
+      <span class="wdl-pct muted small">${labels}</span>
     </span>`;
 }
 
@@ -298,12 +302,11 @@ export function renderMatches(S, el) {
   const venues = [...new Set(all.map((m) => m.ground))].sort();
   const filtered = S.venueFilter ? all.filter((m) => m.ground === S.venueFilter) : all;
 
-  const groupsByDate = new Map();
-  for (const m of filtered) {
-    const { dateLabel } = kickoffParts(m.kickoff);
-    if (!groupsByDate.has(dateLabel)) groupsByDate.set(dateLabel, []);
-    groupsByDate.get(dateLabel).push(m);
-  }
+  // Played = has a real result in the (time-machine-filtered) results, so the
+  // split moves with the time machine just like everything else.
+  const isPlayed = (m) => m.kind === "group"
+    ? !!S.results?.group_results?.[m.id]
+    : !!S.results?.knockout?.[m.id]?.score;
 
   const rowHtml = (m) => {
     const checked = S.attended.has(m.id) ? "checked" : "";
@@ -325,14 +328,32 @@ export function renderMatches(S, el) {
     }
     return `
       <label class="match-row ${checked ? "selected" : ""}">
-        <input type="checkbox" data-mid="${esc(m.id)}" ${checked}>
-        <span class="time muted">${timeLabel}</span>
-        ${matchChip(m)}
-        <span class="label">${label}</span>
-        <span class="venue muted">${esc(m.ground)}</span>
+        <span class="match-main">
+          <input type="checkbox" data-mid="${esc(m.id)}" ${checked}>
+          <span class="time muted">${timeLabel}</span>
+          ${matchChip(m)}
+          <span class="label">${label}</span>
+          <span class="venue muted">${esc(m.ground)}</span>
+        </span>
         ${wdl}
       </label>`;
   };
+
+  // Date headers within a section.
+  const renderDays = (list) => {
+    const byDate = new Map();
+    for (const m of list) {
+      const { dateLabel } = kickoffParts(m.kickoff);
+      if (!byDate.has(dateLabel)) byDate.set(dateLabel, []);
+      byDate.get(dateLabel).push(m);
+    }
+    return [...byDate.entries()].map(([date, ms]) =>
+      `<h3 class="datehead">${esc(date)}</h3>${ms.map(rowHtml).join("")}`).join("");
+  };
+
+  const upcoming = filtered.filter((m) => !isPlayed(m));
+  const played = filtered.filter(isPlayed);
+  const atVenue = S.venueFilter ? " at this venue" : "";
 
   el.innerHTML = `
     <div class="card">
@@ -347,9 +368,14 @@ export function renderMatches(S, el) {
         ${S.attended.size ? '<button class="btn small" data-clear-attended>clear all</button>' : ""}
       </div>
     </div>
-    ${[...groupsByDate.entries()].map(([date, ms]) => `
-      <h3 class="datehead">${esc(date)}</h3>
-      ${ms.map(rowHtml).join("")}`).join("")}`;
+    ${upcoming.length
+      ? renderDays(upcoming)
+      : `<p class="muted">No upcoming matches${atVenue}.</p>`}
+    ${played.length ? `
+      <details class="played-section">
+        <summary>${played.length} played match${played.length === 1 ? "" : "es"}${atVenue}</summary>
+        ${renderDays(played)}
+      </details>` : ""}`;
 }
 
 // ---------------------------------------------------------------------------

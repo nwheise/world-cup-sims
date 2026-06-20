@@ -169,16 +169,22 @@ select {
 
 /* --- matches --- */
 .match-row {
-  display: flex; gap: 10px; align-items: baseline; padding: 7px 10px;
-  border-radius: 8px; cursor: pointer; flex-wrap: wrap;
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  border-radius: 8px; cursor: pointer;
 }
 .match-row:hover { background: var(--panel); }
 .match-row.selected { background: var(--panel); outline: 1px solid var(--accent); }
+.match-main { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .match-row .time { width: 70px; flex-shrink: 0; font-size: 0.85rem; }
-.match-row .label { flex: 1 1 280px; }
+.match-row .label { flex: 1 1 240px; }
 .match-row .label em { color: var(--muted); font-style: normal; }
-.match-row .venue { font-size: 0.8rem; }
+.match-row .venue { font-size: 0.8rem; margin-left: auto; text-align: right; }
 .match-row input { accent-color: var(--accent); width: 16px; height: 16px; }
+.played-section { margin-top: 14px; }
+.played-section > summary {
+  cursor: pointer; color: var(--accent-2); font-size: 0.9rem; font-weight: 600;
+  padding: 6px 0; border-bottom: 1px solid var(--panel-2);
+}
 
 /* --- teams / duel --- */
 .duel { display: flex; gap: 14px; align-items: center; justify-content: center; margin: 18px 0 10px; }
@@ -260,11 +266,13 @@ select {
 #info-dialog ul { color: var(--muted); font-size: 0.9rem; padding-left: 20px; }
 #info-dialog li { margin: 8px 0; }
 
-/* --- per-match W/D/L odds (match rows) --- */
-.wdl { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+/* --- per-match W/D/L odds (own line under the matchup) --- */
+.match-odds {
+  display: flex; align-items: center; gap: 10px; padding-left: 96px;
+}
 .wdl-bar {
-  display: inline-flex; width: 90px; height: 7px; border-radius: 4px;
-  overflow: hidden; background: #0a0f1c;
+  display: inline-flex; width: 140px; height: 7px; border-radius: 4px;
+  overflow: hidden; background: #0a0f1c; flex: none;
 }
 .wdl-seg { height: 100%; }
 .wdl-seg.wdl-w { background: var(--accent); }
@@ -296,5 +304,7 @@ select {
   .ranking .rk-team { flex-basis: 150px; }
   .cheer-head .when { margin-left: 0; }
   .match-row .time { width: 60px; }
-  .wdl-bar { width: 64px; }
+  .match-row .venue { margin-left: 0; text-align: left; flex-basis: 100%; }
+  .match-odds { padding-left: 0; }
+  .wdl-bar { width: 100px; }
 }

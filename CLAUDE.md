@@ -17,10 +17,10 @@ for the JS test suite (see "Key findings"); the JS engine is asserted to reprodu
 | File | Purpose |
 |---|---|
 | `site/index.html`, `site/css/style.css` | Single-page app shell + styles (dark, mobile-friendly, no framework). |
-| `site/js/sim-core.js` | **The simulator + analysis engine** (pure ESM — identical in the Web Worker and under node tests). Official FIFA 2026 rules end to end; simulates all 104 matches, honoring real results (`prepareResults`): played group games pinned, known knockout winners honored when they match the simulated lineup. Packs per-sim records (~216 bytes: 72 group outcomes, 48 group positions, 64 knockout participants, 32 winners) so re-analysis never re-simulates. Hosts `appearanceProbs` (per-slot + full joint matchup distributions + champion), `groupProbs`, `analyzeCheer` (cheer guide incl. loyalty guard, per-liked-team conditionals, top-picks summary), `analyzeTeamPath` (fan mode — see "The team-path math"), `assessLoyalty`, `emphasize`, and `resultsAsOf` (the **time-machine filter** — see "The time-machine"). Constants: `EMPHASIS=2.0`, `LIKE_FLOOR=0.5`, `SWING_THRESHOLD=0.03`, seed 42, fixed 100k sims. |
+| `site/js/sim-core.js` | **The simulator + analysis engine** (pure ESM — identical in the Web Worker and under node tests). Official FIFA 2026 rules end to end; simulates all 104 matches, honoring real results (`prepareResults`): played group games pinned, known knockout winners honored when they match the simulated lineup. Packs per-sim records (~216 bytes: 72 group outcomes, 48 group positions, 64 knockout participants, 32 winners) so re-analysis never re-simulates. Hosts `appearanceProbs` (per-slot + full joint matchup distributions + champion), `groupProbs`, `analyzeCheer` (cheer guide incl. loyalty guard, per-liked-team conditionals, top-picks summary), `analyzeTeamPath` (fan mode — see "The team-path math"), `assessLoyalty`, `emphasize`, `matchWDL` + `analyzeMatchCalibration` (per-match accuracy — see "The per-match-accuracy math"), and `resultsAsOf` (the **time-machine filter** — see "The time-machine"). Constants: `EMPHASIS=2.0`, `LIKE_FLOOR=0.5`, `SWING_THRESHOLD=0.03`, `CALIB_BINS` (reliability-diagram bins), seed 42, fixed 100k sims. |
 | `site/js/worker.js` | Web Worker wrapper: `simulate` once (progress events), then `analyze` (weights + attended matches) and `teampath` (followed team) requests are instant re-aggregations. |
 | `site/js/prefs.js` | Head-to-head preference ranking (Elo replay over the pick history): `computeScores` (supports `[a,b,"="]` equal-preference entries scored as draws, and optional priors), `ratingPriors` (FIFA ratings compressed into `INIT_ELO ± PRIOR_SPREAD/2 = ±150` — zero picks already means "best teams first", ~6 picks flip any prior gap), `computeWeights` (min-max to [0,1]), `applyPins` (pinned favorites locked at 1.0, unpinned compressed below `UNPINNED_CAP=0.85`), `pickPair` (information-maximizing pairing: scans all C(48,2) pairs for `(Σ 1/(1+count)) · H(E) / (1+timesAsked)` — outcome entropy × how poorly-located the teams are, repeats demoted; sampled from within `NEAR_BEST=0.9` of the top score). The ranking pool is always all 48 teams (it feeds Must-watch/cheer/path, not just attended matches). |
-| `site/js/views.js`, `site/js/app.js`, `site/js/format.js` | Rendering (pure state→HTML), state/persistence/worker wiring (localStorage keys `wc26:comparisons`, `wc26:attended`, `wc26:pinned`, `wc26:settings`, `wc26:fanteam`), and display helpers (names/flags, venue-local kickoff times, viewer-local timestamps, slot descriptions). app.js also owns the **time-machine** picker (cascading date→match `<select>`s, `S.asOf` cutoff = chosen match's kickoff ISO; transient, not persisted — reload returns to "now"). |
+| `site/js/views.js`, `site/js/app.js`, `site/js/format.js` | Rendering (pure state→HTML, incl. `renderAccuracy` + per-row `wdlMarkup` W/D/L odds shown on their own line, team-anchored; My matches splits upcoming from a default-closed collapsed played section), state/persistence/worker wiring (localStorage keys `wc26:comparisons`, `wc26:attended`, `wc26:pinned`, `wc26:settings`, `wc26:fanteam`), and display helpers (names/flags, venue-local kickoff times, viewer-local timestamps, slot descriptions). app.js computes `S.matchCalibration` synchronously on every results/time-machine change (no worker) and owns the **time-machine** picker (cascading date→match `<select>`s, `S.asOf` cutoff = chosen match's kickoff ISO; transient, not persisted — reload returns to "now"). |
 | `site/js/schedule.js` | **Must-watch tab math** (pure — see "The must-watch math"): `scoreMatches` (per-match appeal from weights × appearance odds; no extra simulation), `buildTiers` (must/worth/rest; pinned teams' games always must-watch), `rankMap`, and the iCalendar export (`matchEvents`, `buildICS`, RFC 5545 escaping/folding, UTC stamps). `.ics` download wiring (`downloadICS`) lives in app.js. |
 | `site/data/tournament.json` | **Static facts** (committed): groups, ratings, all 104 matches with kickoffs/venues/slot codes, Annex C. Regenerate via `build_data.py` only if FIFA reschedules or ratings are refreshed. |
 | `site/data/results.json` | **Live results** (committed, refreshed by the cron): `group_results` keyed `"TeamA\|TeamB"` (90-min scores), `knockout` keyed `m73..m104` (participants once known; score + winner once played). |
@@ -28,6 +28,7 @@ for the JS test suite (see "Key findings"); the JS engine is asserted to reprodu
 | `scripts/update_results.py` | Live results → results.json. **Primary: ESPN public scoreboard API** (keyless, near-live; group games matched by team pair, knockout events by unique UTC kickoff; winner from ESPN's per-competitor flag so ET/pens are correct). **Fallback: openfootball** (volunteer-run; unreliable mid-tournament — in 2022 its JSON got scores backfilled years later). Idempotent; no-op after Aug 1, 2026. `parse_espn()` is pure and tested. |
 | `annex_c.txt` | FIFA's official Annex C third-place allocation table — all 495 C(12,8) combinations, transcribed from the published schedule. **Do not regenerate or hand-edit**; `build_data.py` re-validates it structurally on every run. |
 | `tests/sim-core.test.mjs` | **JS suite** (`node --test "tests/**/*.test.mjs"`, no npm deps, node ≥ 20). Invariants (groups/ratings/annex, H2H-beats-GD tiebreaker case, bracket wiring, seed reproducibility) + cross-validation against the Python sim's published findings + behavior pins: real results pinning, known-knockout-winner honoring, per-slot probs sum to 1, matchup joint↔marginal consistency, loyalty guard (self/other/suppress incl. the Switzerland/Canada/M85 regression), bucket==pinned-run conditioning (cheer AND team-path), team-path internal identities (survival-curve monotonicity, tail-sum E[depth], cross-checks vs groupProbs/appearanceProbs), equal-preference Elo, pin dominance. |
+| `tests/calibration.test.mjs` | **JS suite** for per-match accuracy: `matchWDL` (proper distribution, even-team symmetry, win↔loss mirror, knockout `pDraw=0` + tiebreak-share cap, MC cross-check) and `analyzeMatchCalibration` (point counts per category, realized-outcome marking, ignores unplayed/undecided, bins partition the data with correct means, Brier = MSE, custom fine-low bins). |
 | `test_update_results.py` | **Python suite** (`python3 -m unittest test_update_results`). ESPN parser (name mapping, pair flip, placeholders, pens-decided winner, malformed-feed guard) + build_data embedded-data integrity + Annex C validation + committed-tournament.json consistency. |
 | `.github/workflows/site.yml` | One workflow: push to main → tests + Pages deploy; **hourly cron** (`23 * * * *`; GitHub cron is best-effort — 30–90 min delays/skips observed, hence hourly) / manual dispatch → refresh results.json, commit if changed, tests + deploy. Scheduled/manual deploys stamp `checked_at` into the DEPLOYED results.json only (committed file keeps `fetched_at` = last actual score change; no churn commits) — the status line shows "last new result … · checked …". Single workflow on purpose: GITHUB_TOKEN pushes don't trigger other workflows. |
 
@@ -206,6 +207,38 @@ no-results baseline.)
   events 120 min, knockout 165 (ET/pens). `tests/schedule.test.mjs` covers scoring
   identities, tier invariants, pin forcing, and the ICS format.
 
+## The per-match-accuracy math (in `site/js/sim-core.js`; "📈 Accuracy" tab)
+
+- **`matchWDL(ra, rb, knockout)`**: closed-form win/draw/loss odds for ONE match. The
+  match model is rating-only (goals independent Poisson, `λ_a = 2.7·E`, `λ_b = 2.7·(1−E)`),
+  so W/D/L is exact — no Monte Carlo. `pWin/pDraw/pLoss` come from the truncated
+  (`WDL_KMAX=25`) Poisson product; for knockout games the draw mass is folded into win/loss
+  by the same `0.5+0.4·(E−0.5)` ET/penalties proxy `simulateMatch` uses (so `pDraw=0`).
+  These are the W/D/L odds shown on their own team-anchored line on every match row in
+  **My matches** (`wdlMarkup`), group games always, knockout games once both participants
+  are locked.
+- **`analyzeMatchCalibration(prep, results, opts)`**: grades those odds against reality.
+  W/D/L is a multi-class system (group games 3 classes, knockout 2), so the headline score
+  is the **multiclass Brier** (scikit-learn's definition): per match, sum the squared error
+  over its classes, then average over matches — range **[0, 2]**, lower is better. It also
+  returns the **no-skill baseline** (`brierBaseline`, a uniform `1/nClasses` forecast → 2/3
+  per group game, 1/2 per knockout) and a layperson-friendly pair: `avgProbActual` (mean
+  probability the model gave the result that actually happened) vs `baselineProbActual`
+  (1/nClasses). The **reliability diagram** pools per-class `{p, o}` points (standard
+  multiclass calibration curve) into `binMode` `"count"` (equal-count quantile bins,
+  default — even sample size and even Wilson widths) or `"width"` (`CALIB_BINS`, ten
+  equal-width buckets); per bin `{n, meanPred, obsFreq, wilson*}`. `byCategory` carries the
+  group/knockout split; `points` are returned so the UI re-bins without recompute.
+- **Honors the time machine implicitly**: app.js recomputes `S.matchCalibration` from the
+  (asOf-filtered) `S.results` on every results/time-machine change — synchronous, no worker,
+  no replay (the model is static given ratings). Wound back, fewer matches are graded.
+- **Reader-facing framing** (tab headline + "How this works" dialog): lead with the
+  reliability diagram, then one plain line under it — "the win/draw/loss calls were X% better
+  than a random guess", where X = relative gain of `avgProbActual` over `baselineProbActual`
+  (handles worse/about-even too); Brier lives only in the per-category table and caveats.
+  One tournament with correlated outcomes, so descriptive not a verdict; football is
+  high-variance (perfect is unreachable); model is rating-only; knockout draws folded into W/L.
+
 ## The time-machine (in `site/js/sim-core.js` `resultsAsOf`; header picker)
 
 - **What it does**: re-runs the whole site "as of" any earlier match — wind back to right
@@ -270,3 +303,9 @@ on-screen copy, code comments, commit messages, and replies.
 2. Nice-to-haves: shareable URL state, what-if toggles for undecided games, conditional
    queries ("P(USA in M94 | USA wins group)"), weight M94 above M82 in the objective
    (the R16 ticket is the marquee one).
+3. **Structural calibration** (deferred): extend the 📈 Accuracy tab beyond per-match W/D/L
+   to grade the tournament-structure forecasts (advancement, group winner, knockout-slot
+   appearance, champion). Needs a realized-outcome resolver (factor the bracket logic out of
+   `simulateTournament`) with careful "decided" gating (advancement only once all 12 groups
+   finish), and is statistically weak (single tournament, correlated, back-loaded) — hence
+   deferred until more of the bracket resolves.

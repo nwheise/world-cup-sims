@@ -14,9 +14,10 @@ Web Analytics with GoatCounter: https://worldcupcheerguide.goatcounter.com/
 
 ## What it does
 
-Six tabs, all driven by the one simulation:
+Seven tabs, all driven by the one simulation:
 
-1. **🎟️ My matches** — check off any of the 104 matches you're attending.
+1. **🎟️ My matches** — check off any of the 104 matches you're attending. Each match also
+   shows the model's predicted win/draw/loss odds.
 2. **❤️ My teams** — rank the teams you want to see via quick head-to-head picks
    ("Sweden *or* Algeria?"), with ties, undo, and ⭐ pins for absolute favorites. With no
    picks the ranking already follows team strength, so every other tab works out of the box.
@@ -38,6 +39,11 @@ Six tabs, all driven by the one simulation:
    match, top matchups (click a team on each side to query any exact pairing), group
    standings with advancement odds, and champion odds. Your attended matches stay pinned on
    top.
+7. **📈 Accuracy** — how good the model's per-match predictions are: a reliability diagram of
+   the win/draw/loss calls against real results (do the ~60% calls happen ~60% of the time?),
+   a one-line summary of how much better than a random guess the calls have been, and the
+   multiclass Brier score. One tournament with correlated outcomes, so it's descriptive rather
+   than a verdict.
 
 A **🕰 time machine** in the header rewinds every tab to how it looked right after any
 earlier match, using only the results played up to that point.

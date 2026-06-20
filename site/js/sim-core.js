@@ -63,6 +63,42 @@ export function simulateMatch(ra, rb, knockout, rnd) {
   return [ga, gb];
 }
 
+const WDL_KMAX = 25; // Poisson tail beyond 25 goals is ~0 for lambda <= 2.7
+
+/**
+ * Closed-form win/draw/loss probabilities for a single match, from team a's
+ * perspective. The model is rating-only (goals are independent Poisson with
+ * lambda_a = BASE_GOALS*E, lambda_b = BASE_GOALS*(1-E)), so this is exact — no
+ * Monte Carlo. For knockout games the draw mass is folded into win/loss by the
+ * same ET/penalties proxy simulateMatch uses (so pDraw = 0). Returns
+ * { pWin, pDraw, pLoss }; the three sum to 1 within floating-point slack.
+ */
+export function matchWDL(ra, rb, knockout = false) {
+  const e = expectedScore(ra, rb);
+  const pmf = (lam) => {
+    const out = new Float64Array(WDL_KMAX + 1);
+    let p = Math.exp(-lam);
+    out[0] = p;
+    for (let k = 1; k <= WDL_KMAX; k++) { p *= lam / k; out[k] = p; }
+    return out;
+  };
+  const pa = pmf(BASE_GOALS * e), pb = pmf(BASE_GOALS * (1 - e));
+  let pWin = 0, pDraw = 0, pLoss = 0;
+  for (let i = 0; i <= WDL_KMAX; i++) {
+    for (let j = 0; j <= WDL_KMAX; j++) {
+      const m = pa[i] * pb[j];
+      if (i > j) pWin += m; else if (i === j) pDraw += m; else pLoss += m;
+    }
+  }
+  if (knockout) {
+    const pAdvA = 0.5 + 0.4 * (e - 0.5);
+    pWin += pDraw * pAdvA;
+    pLoss += pDraw * (1 - pAdvA);
+    pDraw = 0;
+  }
+  return { pWin, pDraw, pLoss };
+}
+
 // --- Data preparation --------------------------------------------------------
 
 /**
@@ -371,6 +407,143 @@ export function groupProbs(prep, store) {
     second: pos[1].map((c) => c / n),
     third: pos[2].map((c) => c / n),
     advance: Array.from(reach, (c) => c / n),
+  };
+}
+
+// --- Per-match accuracy (calibration of the W/D/L model) -------------------------
+
+// Even-width reliability-diagram bins: ten equal-width buckets on [0, 1].
+export const CALIB_BINS = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1];
+
+// Wilson 95% score interval for k successes in n trials — honest error bars
+// that stay tight for big bins and wide for small ones (no dependencies).
+function wilson(k, n, z = 1.96) {
+  if (!n) return [null, null];
+  const phat = k / n, z2 = z * z, denom = 1 + z2 / n;
+  const center = (phat + z2 / (2 * n)) / denom;
+  const half = z * Math.sqrt(phat * (1 - phat) / n + z2 / (4 * n * n)) / denom;
+  return [Math.max(0, center - half), Math.min(1, center + half)];
+}
+
+// Summarize a group of reliability points into one diagram bin.
+function makeBin(pts, lo, hi) {
+  const n = pts.length;
+  const sumO = pts.reduce((s, q) => s + q.o, 0);
+  const [wlo, whi] = wilson(sumO, n);
+  return {
+    lo, hi, n,
+    meanPred: n ? pts.reduce((s, q) => s + q.p, 0) / n : null,
+    obsFreq: n ? sumO / n : null,
+    wilsonLo: wlo, wilsonHi: whi,
+  };
+}
+
+// Even-width bins on fixed edges (final bucket closed on the right).
+function binsByWidth(points, edges) {
+  const buckets = Array.from({ length: edges.length - 1 }, () => []);
+  for (const q of points) {
+    let i = edges.length - 2;
+    for (let e = 1; e < edges.length - 1; e++) if (q.p < edges[e]) { i = e - 1; break; }
+    buckets[i].push(q);
+  }
+  return buckets.map((b, i) => makeBin(b, edges[i], edges[i + 1]));
+}
+
+// Equal-count bins: sort by p, split into contiguous near-equal chunks, so every
+// dot rests on a similar sample size (and similar-width Wilson interval).
+function binsByCount(points) {
+  if (!points.length) return [];
+  const sorted = [...points].sort((a, b) => a.p - b.p);
+  const nBins = Math.max(3, Math.min(8, Math.round(sorted.length / 16)));
+  const out = [];
+  for (let i = 0; i < nBins; i++) {
+    const start = Math.floor(i * sorted.length / nBins);
+    const end = Math.floor((i + 1) * sorted.length / nBins);
+    if (end <= start) continue;
+    const chunk = sorted.slice(start, end);
+    out.push(makeBin(chunk, chunk[0].p, chunk[chunk.length - 1].p));
+  }
+  return out;
+}
+
+/**
+ * Grade the model's predicted win/draw/loss against what actually happened, for
+ * every played match. W/D/L is a multi-class system — group games have 3 classes
+ * (win/draw/loss), knockout games 2 (win/loss) — so the headline score is the
+ * multiclass Brier (scikit-learn's definition): per match, SUM the squared error
+ * over its classes, then average over matches. Range [0, 2]; lower is better.
+ *
+ * Two reader-facing summaries make that number legible: `avgProbActual`, the
+ * average probability the model gave to the result that actually happened, vs a
+ * no-skill 1/nClasses guess (`baselineProbActual`); and `brierBaseline`, the
+ * Brier of that same no-skill forecast. The reliability diagram pools the
+ * per-class (probability, did-it-happen) pairs — the standard multiclass
+ * calibration curve — into equal-count (default) or even-width bins
+ * (`opts.binMode = "count" | "width"`).
+ *
+ * Honors the time machine implicitly: pass results already filtered through
+ * resultsAsOf and only matches played by that cutoff are graded. Forecasts are
+ * the rating-only matchWDL, so no simulation, store, or replay is needed.
+ */
+export function analyzeMatchCalibration(prep, results, opts = {}) {
+  const { ratings, groupGames, ko, ti } = prep;
+  const widthMode = opts.binMode === "width";
+
+  // One record per played match: its class probabilities and the realized class.
+  const matches = [];
+  const gr = results?.group_results || {};
+  for (const g of groupGames) {
+    const res = gr[g.id];
+    if (!res) continue;
+    const [ga, gb] = res;
+    const { pWin, pDraw, pLoss } = matchWDL(ratings[g.a], ratings[g.b], false);
+    matches.push({
+      category: "group", classes: { W: pWin, D: pDraw, L: pLoss },
+      actual: ga > gb ? "W" : ga < gb ? "L" : "D",
+    });
+  }
+  const koRes = results?.knockout || {};
+  for (const m of ko) {
+    const e = koRes[m.id];
+    if (!e || !e.winner) continue;
+    const t1 = ti.get(e.team1), t2 = ti.get(e.team2), w = ti.get(e.winner);
+    if (t1 === undefined || t2 === undefined || w === undefined) continue;
+    const { pWin, pLoss } = matchWDL(ratings[t1], ratings[t2], true);
+    matches.push({ category: "ko", classes: { W: pWin, L: pLoss }, actual: w === t1 ? "W" : "L" });
+  }
+
+  // Multiclass Brier (sum over a match's classes); the no-skill baseline predicts
+  // a uniform 1/nClasses for every class.
+  const matchBrier = (mt) => Object.entries(mt.classes)
+    .reduce((s, [c, p]) => s + (p - (c === mt.actual ? 1 : 0)) ** 2, 0);
+  const baselineBrier = (mt) => {
+    const u = 1 / Object.keys(mt.classes).length;
+    return Object.keys(mt.classes).reduce((s, c) => s + (u - (c === mt.actual ? 1 : 0)) ** 2, 0);
+  };
+  const mean = (arr, f) => arr.length ? arr.reduce((s, x) => s + f(x), 0) / arr.length : null;
+  const summarize = (mts) => ({
+    brier: mean(mts, matchBrier), brierBaseline: mean(mts, baselineBrier), count: mts.length,
+  });
+
+  // Reliability points: one (probability, did-it-happen) pair per class per match.
+  const points = [];
+  for (const mt of matches) {
+    for (const [c, p] of Object.entries(mt.classes)) points.push({ p, o: c === mt.actual ? 1 : 0 });
+  }
+
+  return {
+    brier: mean(matches, matchBrier),
+    brierBaseline: mean(matches, baselineBrier),
+    avgProbActual: mean(matches, (mt) => mt.classes[mt.actual]),
+    baselineProbActual: mean(matches, (mt) => 1 / Object.keys(mt.classes).length),
+    nMatches: matches.length,
+    bins: widthMode ? binsByWidth(points, CALIB_BINS) : binsByCount(points),
+    byCategory: {
+      group: summarize(matches.filter((m) => m.category === "group")),
+      ko: summarize(matches.filter((m) => m.category === "ko")),
+    },
+    points,
+    binMode: widthMode ? "width" : "count",
   };
 }
 

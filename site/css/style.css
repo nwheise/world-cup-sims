@@ -169,16 +169,22 @@ select {
 
 /* --- matches --- */
 .match-row {
-  display: flex; gap: 10px; align-items: baseline; padding: 7px 10px;
-  border-radius: 8px; cursor: pointer; flex-wrap: wrap;
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
+  border-radius: 8px; cursor: pointer;
 }
 .match-row:hover { background: var(--panel); }
 .match-row.selected { background: var(--panel); outline: 1px solid var(--accent); }
+.match-main { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .match-row .time { width: 70px; flex-shrink: 0; font-size: 0.85rem; }
-.match-row .label { flex: 1 1 280px; }
+.match-row .label { flex: 1 1 240px; }
 .match-row .label em { color: var(--muted); font-style: normal; }
-.match-row .venue { font-size: 0.8rem; }
+.match-row .venue { font-size: 0.8rem; margin-left: auto; text-align: right; }
 .match-row input { accent-color: var(--accent); width: 16px; height: 16px; }
+.played-section { margin-top: 14px; }
+.played-section > summary {
+  cursor: pointer; color: var(--accent-2); font-size: 0.9rem; font-weight: 600;
+  padding: 6px 0; border-bottom: 1px solid var(--panel-2);
+}
 
 /* --- teams / duel --- */
 .duel { display: flex; gap: 14px; align-items: center; justify-content: center; margin: 18px 0 10px; }
@@ -260,9 +266,51 @@ select {
 #info-dialog ul { color: var(--muted); font-size: 0.9rem; padding-left: 20px; }
 #info-dialog li { margin: 8px 0; }
 
+/* --- per-match W/D/L odds (own line under the matchup) --- */
+.match-odds {
+  display: flex; align-items: center; gap: 8px; padding-left: 96px;
+}
+.wdl-flag { flex: none; font-size: 1.15rem; line-height: 1; }
+.wdl-bar {
+  display: flex; flex: 1 1 auto; max-width: 460px; min-width: 180px;
+  height: 24px; border-radius: 6px; overflow: hidden; background: #0a0f1c;
+}
+.wdl-seg {
+  height: 100%; display: flex; align-items: center; justify-content: center;
+  min-width: 0; overflow: hidden;
+}
+.wdl-seg + .wdl-seg { border-left: 1px solid #0a0f1c; }
+.wdl-seg b {
+  font-size: 0.74rem; font-weight: 600; color: #fff; white-space: nowrap;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
+}
+.wdl-seg.wdl-d { background: #2b3450; }
+
+/* --- accuracy / reliability diagram --- */
+.calib-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.calib-skill { margin: 10px 0 0; font-size: 0.95rem; text-align: center; }
+.calib-bins { display: flex; gap: 6px; flex: none; }
+.calib-svg { display: block; width: 100%; max-width: 320px; margin: 6px auto; }
+.calib-grid { stroke: var(--panel-2); stroke-width: 1; }
+.calib-diag { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
+.calib-dot { fill: var(--accent); fill-opacity: 0.85; }
+.calib-whisker { stroke: var(--accent-2); stroke-width: 1.5; }
+.calib-axis { fill: var(--muted); font-size: 10px; }
+.calib-cat { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.9rem; }
+.calib-cat th, .calib-cat td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--panel-2); }
+.calib-cat th { color: var(--accent-2); font-weight: 600; }
+.caveats { padding-left: 18px; }
+.caveats li { margin: 6px 0; }
+
 @media (max-width: 640px) {
   .grid { grid-template-columns: 1fr; }
   .ranking .rk-team { flex-basis: 150px; }
   .cheer-head .when { margin-left: 0; }
   .match-row .time { width: 60px; }
+  .match-row .venue { margin-left: 0; text-align: left; flex-basis: 100%; }
+  .match-odds { padding-left: 0; }
+  .wdl-bar { max-width: none; min-width: 0; }
 }

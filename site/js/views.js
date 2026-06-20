@@ -4,12 +4,45 @@
  * and event delegation).
  */
 
-import { teamLabel, displayName, flag, kickoffParts, fmtKickoff, fmtTimestamp,
+import { teamLabel, displayName, flag, teamColor, kickoffParts, fmtKickoff, fmtTimestamp,
          slotDesc, ROUND_SHORT, pct, esc } from "./format.js";
 import { scoreMatches, buildTiers, rankMap } from "./schedule.js";
+import { matchWDL } from "./sim-core.js";
 
 const bar = (p, cls = "") =>
   `<span class="bar ${cls}"><span style="width:${Math.max(0, Math.min(100, p * 100))}%"></span></span>`;
+
+/**
+ * Predicted win/draw/loss odds for one match, as its own line: one thick,
+ * neutral-toned bar with the percentages set inside each segment, bracketed by
+ * the two team flags (left flag = left/win segment, right flag = right/loss
+ * segment). The bar stays color-neutral on purpose so it never competes with
+ * team identity — the flags do the anchoring. Group games always have known
+ * teams; knockout games show odds only once both participants are locked
+ * (otherwise the matchup doesn't exist yet). The model is rating-only, so this
+ * is the same matchWDL the accuracy tab grades.
+ */
+function wdlMarkup(na, nb, ratings, knockout) {
+  const { pWin, pDraw, pLoss } = matchWDL(ratings[na], ratings[nb], knockout);
+  const w = (p) => `${Math.max(0, Math.min(100, p * 100))}%`;
+  // Drop the inner % only for slivers too narrow to hold it; the tooltip and the
+  // sum-to-100 of the others still convey it. Win/loss take each team's color
+  // (draw stays neutral, set in CSS).
+  const seg = (cls, p, color) =>
+    `<span class="wdl-seg ${cls}" style="width:${w(p)}${color ? `;background:${color}` : ""}">${p >= 0.07 ? `<b>${pct(p)}</b>` : ""}</span>`;
+  const segs = knockout
+    ? seg("wdl-w", pWin, teamColor(na)) + seg("wdl-l", pLoss, teamColor(nb))
+    : seg("wdl-w", pWin, teamColor(na)) + seg("wdl-d", pDraw) + seg("wdl-l", pLoss, teamColor(nb));
+  const title = knockout
+    ? `${displayName(na)} win ${pct(pWin)} · ${displayName(nb)} win ${pct(pLoss)}`
+    : `${displayName(na)} win ${pct(pWin)} · draw ${pct(pDraw)} · ${displayName(nb)} win ${pct(pLoss)}`;
+  return `
+    <span class="match-odds" title="${esc(title)}">
+      <span class="wdl-flag">${flag(na)}</span>
+      <span class="wdl-bar">${segs}</span>
+      <span class="wdl-flag">${flag(nb)}</span>
+    </span>`;
+}
 
 /**
  * "How this result moves your teams" — per liked team, P(they end up in your
@@ -275,21 +308,21 @@ export function renderMatches(S, el) {
   const venues = [...new Set(all.map((m) => m.ground))].sort();
   const filtered = S.venueFilter ? all.filter((m) => m.ground === S.venueFilter) : all;
 
-  const groupsByDate = new Map();
-  for (const m of filtered) {
-    const { dateLabel } = kickoffParts(m.kickoff);
-    if (!groupsByDate.has(dateLabel)) groupsByDate.set(dateLabel, []);
-    groupsByDate.get(dateLabel).push(m);
-  }
+  // Played = has a real result in the (time-machine-filtered) results, so the
+  // split moves with the time machine just like everything else.
+  const isPlayed = (m) => m.kind === "group"
+    ? !!S.results?.group_results?.[m.id]
+    : !!S.results?.knockout?.[m.id]?.score;
 
   const rowHtml = (m) => {
     const checked = S.attended.has(m.id) ? "checked" : "";
     const { timeLabel } = kickoffParts(m.kickoff);
-    let label;
+    let label, wdl = "";
     if (m.kind === "group") {
       const res = S.results?.group_results?.[m.id];
       label = `${teamLabel(m.a)} <em>vs</em> ${teamLabel(m.b)}` +
         (res ? ` <span class="score">${res[0]}–${res[1]}</span>` : "");
+      wdl = wdlMarkup(m.a, m.b, S.ratings, false);
     } else {
       const known = S.koKnown[m.id];
       const played = S.results?.knockout?.[m.id];
@@ -297,16 +330,36 @@ export function renderMatches(S, el) {
         ? `${teamLabel(known[0])} <em>vs</em> ${teamLabel(known[1])}` +
           (played?.score ? ` <span class="score">${played.score[0]}–${played.score[1]}</span>` : "")
         : `${esc(slotDesc(m.slot1))} <em>vs</em> ${esc(slotDesc(m.slot2))}`;
+      if (known) wdl = wdlMarkup(known[0], known[1], S.ratings, true);
     }
     return `
       <label class="match-row ${checked ? "selected" : ""}">
-        <input type="checkbox" data-mid="${esc(m.id)}" ${checked}>
-        <span class="time muted">${timeLabel}</span>
-        ${matchChip(m)}
-        <span class="label">${label}</span>
-        <span class="venue muted">${esc(m.ground)}</span>
+        <span class="match-main">
+          <input type="checkbox" data-mid="${esc(m.id)}" ${checked}>
+          <span class="time muted">${timeLabel}</span>
+          ${matchChip(m)}
+          <span class="label">${label}</span>
+          <span class="venue muted">${esc(m.ground)}</span>
+        </span>
+        ${wdl}
       </label>`;
   };
+
+  // Date headers within a section.
+  const renderDays = (list) => {
+    const byDate = new Map();
+    for (const m of list) {
+      const { dateLabel } = kickoffParts(m.kickoff);
+      if (!byDate.has(dateLabel)) byDate.set(dateLabel, []);
+      byDate.get(dateLabel).push(m);
+    }
+    return [...byDate.entries()].map(([date, ms]) =>
+      `<h3 class="datehead">${esc(date)}</h3>${ms.map(rowHtml).join("")}`).join("");
+  };
+
+  const upcoming = filtered.filter((m) => !isPlayed(m));
+  const played = filtered.filter(isPlayed);
+  const atVenue = S.venueFilter ? " at this venue" : "";
 
   el.innerHTML = `
     <div class="card">
@@ -321,9 +374,14 @@ export function renderMatches(S, el) {
         ${S.attended.size ? '<button class="btn small" data-clear-attended>clear all</button>' : ""}
       </div>
     </div>
-    ${[...groupsByDate.entries()].map(([date, ms]) => `
-      <h3 class="datehead">${esc(date)}</h3>
-      ${ms.map(rowHtml).join("")}`).join("")}`;
+    ${played.length ? `
+      <details class="played-section">
+        <summary>${played.length} played match${played.length === 1 ? "" : "es"}${atVenue}</summary>
+        ${renderDays(played)}
+      </details>` : ""}
+    ${upcoming.length
+      ? renderDays(upcoming)
+      : `<p class="muted">No upcoming matches${atVenue}.</p>`}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -821,4 +879,122 @@ export function renderProbs(S, el) {
     <h2>Group stage</h2>
     <div class="grid groups">${"ABCDEFGHIJKL".split("").map(groupCard).join("")}</div>
     ${koSections}`;
+}
+
+// ---------------------------------------------------------------------------
+// Accuracy (reliability of the per-match W/D/L model)
+// ---------------------------------------------------------------------------
+
+// Reliability diagram as inline SVG: each non-empty bin is a dot at (mean
+// predicted probability, observed frequency), sized by how many forecasts it
+// holds, with a 95% Wilson whisker. A well-calibrated model hugs the diagonal.
+function reliabilityDiagram(bins) {
+  const W = 300, H = 300, pad = 38;
+  const X = (v) => pad + v * (W - 2 * pad);
+  const Y = (v) => H - pad - v * (H - 2 * pad);
+  const pts = bins.filter((b) => b.meanPred != null);
+  const maxN = Math.max(1, ...pts.map((b) => b.n));
+  const dot = (b) => {
+    const r = 3 + 5 * Math.sqrt(b.n / maxN), cx = X(b.meanPred);
+    const whisker = b.wilsonLo != null
+      ? `<line x1="${cx}" y1="${Y(b.wilsonLo)}" x2="${cx}" y2="${Y(b.wilsonHi)}" class="calib-whisker"/>`
+      : "";
+    return `${whisker}<circle cx="${cx}" cy="${Y(b.obsFreq)}" r="${r.toFixed(1)}" class="calib-dot"><title>predicted ~${pct(b.meanPred)}, happened ${pct(b.obsFreq)} (n=${b.n})</title></circle>`;
+  };
+  const ticks = [0, 0.25, 0.5, 0.75, 1];
+  return `
+    <svg class="calib-svg" viewBox="0 0 ${W} ${H}" role="img"
+         aria-label="Reliability diagram: predicted probability versus observed frequency">
+      ${ticks.map((v) => `
+        <line x1="${X(v)}" y1="${Y(0)}" x2="${X(v)}" y2="${Y(1)}" class="calib-grid"/>
+        <line x1="${X(0)}" y1="${Y(v)}" x2="${X(1)}" y2="${Y(v)}" class="calib-grid"/>
+        <text x="${X(v)}" y="${Y(0) + 15}" class="calib-axis" text-anchor="middle">${Math.round(v * 100)}</text>
+        <text x="${X(0) - 7}" y="${Y(v) + 3}" class="calib-axis" text-anchor="end">${Math.round(v * 100)}</text>`).join("")}
+      <line x1="${X(0)}" y1="${Y(0)}" x2="${X(1)}" y2="${Y(1)}" class="calib-diag"/>
+      ${pts.map(dot).join("")}
+      <text x="${X(0.5)}" y="${H - 3}" class="calib-axis" text-anchor="middle">predicted %</text>
+      <text x="11" y="${Y(0.5)}" class="calib-axis" text-anchor="middle" transform="rotate(-90 11 ${Y(0.5)})">observed %</text>
+    </svg>`;
+}
+
+export function renderAccuracy(S, el) {
+  const cal = S.matchCalibration;
+  const status = S.asOf
+    ? `🕰 results through ${S.asOfLabel ? esc(S.asOfLabel) : fmtTimestamp(S.asOf)}`
+    : (S.results?.fetched_at ? `Results through ${fmtTimestamp(S.results.fetched_at)}` : "");
+
+  if (!cal || !cal.nMatches) {
+    el.innerHTML = `
+      <div class="card">
+        <h2>📈 Prediction accuracy</h2>
+        <p class="muted">No matches have been played${S.asOf ? " by this point" : " yet"}.
+        Once games are in, this tab grades the model's win/draw/loss predictions against what
+        actually happened.</p>
+        ${status ? `<p class="muted small">${status}</p>` : ""}
+      </div>`;
+    return;
+  }
+
+  const g = cal.byCategory.group, k = cal.byCategory.ko;
+  const nGames = `${cal.nMatches} match${cal.nMatches === 1 ? "" : "es"}`;
+  // "% better than a random guess": how much more probability the model put on
+  // the result that actually happened than a no-skill (uniform) guess would.
+  const gain = cal.baselineProbActual > 0
+    ? (cal.avgProbActual - cal.baselineProbActual) / cal.baselineProbActual : 0;
+  const skillPct = Math.round(Math.abs(gain) * 100);
+  const skillLine = gain > 0.005
+    ? `Across ${nGames} so far, the model's win/draw/loss calls were <strong>${skillPct}% better</strong> than a random guess.`
+    : gain < -0.005
+    ? `Across ${nGames} so far, the model's win/draw/loss calls were <strong>${skillPct}% worse</strong> than a random guess.`
+    : `Across ${nGames} so far, the model's win/draw/loss calls were about as good as a random guess.`;
+  const catRow = (label, c) => c.count
+    ? `<tr><td>${label}</td><td>${c.count}</td><td>${c.brier.toFixed(3)}</td><td class="muted">${c.brierBaseline.toFixed(3)}</td></tr>`
+    : "";
+
+  el.innerHTML = `
+    <div class="card summary">
+      <h2>📈 Prediction accuracy</h2>
+      <p>How accurate are the model's match predictions? The reliability diagram below checks
+      whether things happen as often as predicted.</p>
+      ${status ? `<p class="muted small">${status}</p>` : ""}
+    </div>
+
+    <div class="card calib">
+      <div class="calib-head">
+        <div class="muted small">Reliability: of all the calls near a given probability, about
+        that share should come true — so the dots should hug the diagonal.</div>
+        <div class="calib-bins">
+          <button class="btn small ${cal.binMode !== "width" ? "active" : ""}" data-calib-bins="count">Equal count</button>
+          <button class="btn small ${cal.binMode === "width" ? "active" : ""}" data-calib-bins="width">Even width</button>
+        </div>
+      </div>
+      ${reliabilityDiagram(cal.bins)}
+      <p class="calib-skill">${skillLine}</p>
+      <table class="calib-cat">
+        <tr><th>Category</th><th>Matches</th><th>Brier</th><th>No-skill</th></tr>
+        ${catRow("Group games (W/D/L)", g)}
+        ${catRow("Knockout games (W/L)", k)}
+      </table>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary class="muted">How to read this, and the caveats</summary>
+        <ul class="muted small caveats">
+          <li><strong>Brier score</strong> is the multiclass version (scikit-learn's): for each
+          match, square the gap between the predicted probability and the outcome (1 or 0) of
+          every result, and sum over win/draw/loss. Range 0–2, lower is better; a no-skill
+          guess (every result equally likely) scores 2/3 for group games and 1/2 for knockouts.</li>
+          <li>The reliability dots pool every win/draw/loss prediction: each dot is the average
+          predicted probability in its bin (x) versus the fraction that actually happened (y);
+          dot size is the sample count and the whisker is a 95% Wilson interval. Equal-count
+          bins keep those whiskers evenly sized.</li>
+          <li>This is <strong>one tournament</strong>, and outcomes within it are correlated, so
+          read it as descriptive, not a verdict — and football is high-variance, so even a great
+          model lands well short of "perfect".</li>
+          <li>The model is rating-only (no form, injuries, or host advantage), and knockout
+          draws are folded into win/loss by the extra-time/penalties proxy.</li>
+        </ul>
+      </details>
+    </div>`;
 }

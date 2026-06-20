@@ -368,14 +368,14 @@ export function renderMatches(S, el) {
         ${S.attended.size ? '<button class="btn small" data-clear-attended>clear all</button>' : ""}
       </div>
     </div>
-    ${upcoming.length
-      ? renderDays(upcoming)
-      : `<p class="muted">No upcoming matches${atVenue}.</p>`}
     ${played.length ? `
       <details class="played-section">
         <summary>${played.length} played match${played.length === 1 ? "" : "es"}${atVenue}</summary>
         ${renderDays(played)}
-      </details>` : ""}`;
+      </details>` : ""}
+    ${upcoming.length
+      ? renderDays(upcoming)
+      : `<p class="muted">No upcoming matches${atVenue}.</p>`}`;
 }
 
 // ---------------------------------------------------------------------------

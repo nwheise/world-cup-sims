@@ -134,10 +134,12 @@
         one-tap export to your calendar (.ics).</li>
       <li><strong>Accuracy:</strong> the model also publishes a win/draw/loss probability for
         every match (shown on each game in My matches). The Accuracy tab grades those calls
-        against real results: a reliability diagram bins the predictions so you can check
-        that, say, the games called ~60% home win really do end that way about 60% of the
-        time, alongside an overall Brier score. It's one tournament with correlated outcomes,
-        so it's descriptive rather than a verdict.</li>
+        against real results. It leads with a plain stat — the average probability the model
+        gave to what actually happened, versus a no-skill guess — and a reliability diagram
+        that checks whether, say, the games called ~60% home win really do end that way about
+        60% of the time. Scored with the multiclass Brier score (0–2, lower is better).
+        It's one tournament with correlated outcomes, and football is high-variance, so read
+        it as descriptive, not a verdict.</li>
       <li><strong>Team path:</strong> follow one team and the same simulation scores every
         remaining game by how much its result extends <em>their</em> expected run — group
         survival, but also which bracket slots and opponents each result steers them

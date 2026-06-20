@@ -911,13 +911,27 @@ function reliabilityDiagram(bins) {
     </svg>`;
 }
 
+// Where the model's Brier sits between perfect (0, left) and no-skill (right).
+function brierGauge(brier, baseline) {
+  const frac = baseline > 0 ? Math.max(0, Math.min(1, brier / baseline)) : 0;
+  return `
+    <div class="gauge">
+      <div class="gauge-track"><div class="gauge-marker" style="left:${(frac * 100).toFixed(1)}%"></div></div>
+      <div class="gauge-ends muted small">
+        <span>0 · perfect</span>
+        <span>Brier ${brier.toFixed(2)}</span>
+        <span>${baseline.toFixed(2)} · no-skill</span>
+      </div>
+    </div>`;
+}
+
 export function renderAccuracy(S, el) {
   const cal = S.matchCalibration;
   const status = S.asOf
     ? `🕰 results through ${S.asOfLabel ? esc(S.asOfLabel) : fmtTimestamp(S.asOf)}`
     : (S.results?.fetched_at ? `Results through ${fmtTimestamp(S.results.fetched_at)}` : "");
 
-  if (!cal || !cal.count) {
+  if (!cal || !cal.nMatches) {
     el.innerHTML = `
       <div class="card">
         <h2>📈 Prediction accuracy</h2>
@@ -930,34 +944,43 @@ export function renderAccuracy(S, el) {
   }
 
   const g = cal.byCategory.group, k = cal.byCategory.ko;
+  const beats = cal.brier < cal.brierBaseline;
+  const nGames = `${cal.nMatches} match${cal.nMatches === 1 ? "" : "es"}`;
+  const verdict = beats
+    ? `Better than a no-skill guess, so the model has real signal. Still just ${nGames}, so read it as encouraging, not proof.`
+    : `Not beating a no-skill guess yet. Just ${nGames} so far, so it's too early to tell.`;
   const catRow = (label, c) => c.count
-    ? `<tr><td>${label}</td><td>${c.count}</td><td>${c.brier != null ? c.brier.toFixed(3) : "—"}</td></tr>`
+    ? `<tr><td>${label}</td><td>${c.count}</td><td>${c.brier.toFixed(3)}</td><td class="muted">${c.brierBaseline.toFixed(3)}</td></tr>`
     : "";
 
   el.innerHTML = `
     <div class="card summary">
       <h2>📈 Prediction accuracy</h2>
-      <p>How well-calibrated are the model's match predictions? Of all the calls made near a
-      given probability, about that share should actually come true, so the points below
-      should hug the diagonal.</p>
+      <p>How accurate are the model's match predictions? Two readings below: a plain
+      score, and a reliability diagram of whether things happen as often as predicted.</p>
       ${status ? `<p class="muted small">${status}</p>` : ""}
     </div>
 
     <div class="card calib">
+      <div class="big-stat">${pct(cal.avgProbActual)}</div>
+      <div class="muted small">average probability the model gave to the result that actually
+      happened — a no-skill guess would average ${pct(cal.baselineProbActual)}.</div>
+      ${brierGauge(cal.brier, cal.brierBaseline)}
+      <p class="verdict ${beats ? "good" : ""}">${verdict}</p>
+    </div>
+
+    <div class="card calib">
       <div class="calib-head">
-        <div>
-          <div class="big-stat">${cal.brier.toFixed(3)}</div>
-          <div class="muted small">Brier score (lower is better) · ${cal.count} forecast points
-          from ${g.count / 3} group + ${k.count / 2} knockout matches</div>
-        </div>
+        <div class="muted small">Reliability: of all the calls near a given probability, about
+        that share should come true — so the dots should hug the diagonal.</div>
         <div class="calib-bins">
-          <button class="btn small ${S.calibBins !== "fine" ? "active" : ""}" data-calib-bins="uniform">Even bins</button>
-          <button class="btn small ${S.calibBins === "fine" ? "active" : ""}" data-calib-bins="fine">Fine low end</button>
+          <button class="btn small ${cal.binMode !== "width" ? "active" : ""}" data-calib-bins="count">Equal count</button>
+          <button class="btn small ${cal.binMode === "width" ? "active" : ""}" data-calib-bins="width">Even width</button>
         </div>
       </div>
       ${reliabilityDiagram(cal.bins)}
       <table class="calib-cat">
-        <tr><th>Category</th><th>Points</th><th>Brier</th></tr>
+        <tr><th>Category</th><th>Matches</th><th>Brier</th><th>No-skill</th></tr>
         ${catRow("Group games (W/D/L)", g)}
         ${catRow("Knockout games (W/L)", k)}
       </table>
@@ -967,14 +990,17 @@ export function renderAccuracy(S, el) {
       <details>
         <summary class="muted">How to read this, and the caveats</summary>
         <ul class="muted small caveats">
-          <li>Each played match contributes a few forecast points: a group game gives three
-          (its predicted win, draw, and loss odds, each scored 1 if it happened), a knockout
-          game two (win/loss).</li>
-          <li>A dot sits at the average predicted probability in its bin (x) versus the
-          fraction that actually happened (y); dot size is the number of forecasts, and the
-          whisker is a 95% Wilson interval, so sparse bins are visibly noisy.</li>
-          <li>This is <strong>one tournament</strong>, and outcomes within it are correlated,
-          so read it as descriptive, not a verdict.</li>
+          <li><strong>Brier score</strong> is the multiclass version (scikit-learn's): for each
+          match, square the gap between the predicted probability and the outcome (1 or 0) of
+          every result, and sum over win/draw/loss. Range 0–2, lower is better; a no-skill
+          guess (every result equally likely) scores 2/3 for group games and 1/2 for knockouts.</li>
+          <li>The reliability dots pool every win/draw/loss prediction: each dot is the average
+          predicted probability in its bin (x) versus the fraction that actually happened (y);
+          dot size is the sample count and the whisker is a 95% Wilson interval. Equal-count
+          bins keep those whiskers evenly sized.</li>
+          <li>This is <strong>one tournament</strong>, and outcomes within it are correlated, so
+          read it as descriptive, not a verdict — and football is high-variance, so even a great
+          model lands well short of "perfect".</li>
           <li>The model is rating-only (no form, injuries, or host advantage), and knockout
           draws are folded into win/loss by the extra-time/penalties proxy.</li>
         </ul>

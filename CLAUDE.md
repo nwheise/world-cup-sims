@@ -214,21 +214,28 @@ no-results baseline.)
   so W/D/L is exact — no Monte Carlo. `pWin/pDraw/pLoss` come from the truncated
   (`WDL_KMAX=25`) Poisson product; for knockout games the draw mass is folded into win/loss
   by the same `0.5+0.4·(E−0.5)` ET/penalties proxy `simulateMatch` uses (so `pDraw=0`).
-  These are the W/D/L bars shown inline on every match row in **My matches** (`wdlMarkup`),
-  group games always, knockout games once both participants are locked.
+  These are the W/D/L odds shown on their own team-anchored line on every match row in
+  **My matches** (`wdlMarkup`), group games always, knockout games once both participants
+  are locked.
 - **`analyzeMatchCalibration(prep, results, opts)`**: grades those odds against reality.
-  Each played GROUP game contributes three binary forecast points (its predicted win, draw,
-  loss odds, each scored 1 iff it happened); each decided KNOCKOUT game two (win/loss). It
-  bins them (default `CALIB_BINS` = ten equal-width buckets; `opts.bins` can pass a fine
-  low-end scheme) into a **reliability diagram** — per bin `{n, meanPred, obsFreq, wilson*}`
-  (95% Wilson interval) — plus an overall and per-category (group/knockout) **Brier score**
-  (`mean((p−o)²)`). Returns `points` too so the UI re-bins client-side without recompute.
+  W/D/L is a multi-class system (group games 3 classes, knockout 2), so the headline score
+  is the **multiclass Brier** (scikit-learn's definition): per match, sum the squared error
+  over its classes, then average over matches — range **[0, 2]**, lower is better. It also
+  returns the **no-skill baseline** (`brierBaseline`, a uniform `1/nClasses` forecast → 2/3
+  per group game, 1/2 per knockout) and a layperson-friendly pair: `avgProbActual` (mean
+  probability the model gave the result that actually happened) vs `baselineProbActual`
+  (1/nClasses). The **reliability diagram** pools per-class `{p, o}` points (standard
+  multiclass calibration curve) into `binMode` `"count"` (equal-count quantile bins,
+  default — even sample size and even Wilson widths) or `"width"` (`CALIB_BINS`, ten
+  equal-width buckets); per bin `{n, meanPred, obsFreq, wilson*}`. `byCategory` carries the
+  group/knockout split; `points` are returned so the UI re-bins without recompute.
 - **Honors the time machine implicitly**: app.js recomputes `S.matchCalibration` from the
   (asOf-filtered) `S.results` on every results/time-machine change — synchronous, no worker,
   no replay (the model is static given ratings). Wound back, fewer matches are graded.
-- **Honest framing** (in the tab + the "How this works" dialog): one tournament with
-  correlated outcomes, so descriptive not a verdict; the model is rating-only (no form,
-  injuries, host edge); knockout draws are folded into W/L.
+- **Reader-facing framing** (tab headline + "How this works" dialog): lead with the
+  average-chance-vs-no-skill stat and a gauge of Brier between perfect (0) and no-skill;
+  one tournament with correlated outcomes, so descriptive not a verdict; football is
+  high-variance (perfect is unreachable); model is rating-only; knockout draws folded into W/L.
 
 ## The time-machine (in `site/js/sim-core.js` `resultsAsOf`; header picker)
 

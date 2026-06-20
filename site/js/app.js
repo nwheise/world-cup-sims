@@ -36,7 +36,7 @@ const S = {
   allMatches: [], ko: [], koById: new Map(), groupById: new Map(),
   koKnown: {}, playedCount: 0, ratings: {}, standings: {},
   matchCalibration: null,                    // per-match W/D/L accuracy (📈 tab)
-  calibBins: "uniform",                      // reliability-diagram bin scheme
+  calibBinMode: "count",                      // reliability-diagram bins: count | width
   probs: null, groupProbs: null, meta: { nSims: 0, seed: 42 },
   simStatus: { state: "running", done: 0, total: 0 },
   analysis: null,
@@ -171,10 +171,7 @@ function applyDerivedResults(cutoff) {
   computeStandings();
   // Per-match W/D/L accuracy is rating-only and independent of the Monte Carlo,
   // so grade it right here against the (time-machine-filtered) results.
-  const bins = S.calibBins === "fine"
-    ? [0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 1]
-    : undefined;
-  S.matchCalibration = analyzeMatchCalibration(S.prep, S.results, { bins });
+  S.matchCalibration = analyzeMatchCalibration(S.prep, S.results, { binMode: S.calibBinMode });
 }
 
 /** (Re)build the two cascading <select>s to reflect S.asOf. */
@@ -340,7 +337,7 @@ function wireEvents() {
     if (!t) return;
     if (t.dataset.tab) setTab(t.dataset.tab);
     else if (t.dataset.calibBins) {
-      S.calibBins = t.dataset.calibBins;
+      S.calibBinMode = t.dataset.calibBins;
       applyDerivedResults(S.asOf);   // recompute bins under the new scheme
       renderAccuracy(S, sections.accuracy);
     }

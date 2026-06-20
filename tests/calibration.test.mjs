@@ -63,68 +63,110 @@ test("matchWDL agrees with a Monte Carlo over many draws", () => {
 
 // --- analyzeMatchCalibration -------------------------------------------------
 
-// Two group games and one decided knockout match. Mexico|South Africa is the
-// opener (group A); pick a second group game and m73 for the bracket.
+// Two group games and one decided knockout match.
 const g1 = tournament.group_games[0];
 const g2 = tournament.group_games[1];
-const m73 = tournament.knockout.find((m) => m.id === "m73");
 
 function fixtureResults() {
   return {
-    group_results: { [g1.id]: [2, 0], [g2.id]: [1, 1] },
-    knockout: {
-      m73: { team1: g1.a, team2: g1.b, winner: g1.a, score: [1, 0] },
-    },
+    group_results: { [g1.id]: [2, 0], [g2.id]: [1, 1] },          // home win, draw
+    knockout: { m73: { team1: g1.a, team2: g1.b, winner: g1.a, score: [1, 0] } },
   };
 }
+const wdl = (a, b, ko) => matchWDL(prep.ratings[prep.ti.get(a)], prep.ratings[prep.ti.get(b)], ko);
 
-test("analyzeMatchCalibration: counts, categories, and realized outcomes", () => {
+test("analyzeMatchCalibration: match counts, categories, diagram points", () => {
   const cal = analyzeMatchCalibration(prep, fixtureResults());
-  // 3 points per group game (2 games) + 2 per decided KO (1 game) = 8.
-  assert.equal(cal.count, 8);
-  assert.equal(cal.byCategory.group.count, 6);
-  assert.equal(cal.byCategory.ko.count, 2);
-  assert.equal(cal.byCategory.group.count + cal.byCategory.ko.count, cal.count);
-
-  // g1 was a home win (2-0): exactly one of its three points has o === 1, on the
-  // win class, whose probability equals matchWDL's pWin.
-  const winP = matchWDL(prep.ratings[prep.ti.get(g1.a)], prep.ratings[prep.ti.get(g1.b)], false).pWin;
-  const g1pts = cal.points.filter((p) => p.id === g1.id);
-  assert.equal(g1pts.filter((p) => p.o === 1).length, 1);
-  const hit = g1pts.find((p) => p.o === 1);
-  assert.ok(Math.abs(hit.p - winP) < 1e-12);
-
-  // g2 was a draw (1-1): the o===1 point sits on the draw probability.
-  const g2pts = cal.points.filter((p) => p.id === g2.id);
-  assert.equal(g2pts.filter((p) => p.o === 1).length, 1);
+  assert.equal(cal.nMatches, 3);                 // 2 group + 1 knockout
+  assert.equal(cal.byCategory.group.count, 2);
+  assert.equal(cal.byCategory.ko.count, 1);
+  // pooled diagram points: 3 per group game + 2 per knockout = 8.
+  assert.equal(cal.points.length, 8);
+  // each match has exactly one realized class, so o===1 totals the match count.
+  assert.equal(cal.points.filter((p) => p.o === 1).length, cal.nMatches);
 });
 
-test("analyzeMatchCalibration: ignores unplayed and not-yet-decided matches", () => {
-  // Knockout entry with participants but no winner must not be graded.
+test("multiclass Brier matches an independent recompute (sklearn definition)", () => {
+  const cal = analyzeMatchCalibration(prep, fixtureResults());
+  const a = wdl(g1.a, g1.b, false);  // g1 home win -> class W
+  const b1 = (a.pWin - 1) ** 2 + a.pDraw ** 2 + a.pLoss ** 2;
+  const b = wdl(g2.a, g2.b, false);  // g2 draw -> class D
+  const b2 = b.pWin ** 2 + (b.pDraw - 1) ** 2 + b.pLoss ** 2;
+  const c = wdl(g1.a, g1.b, true);   // m73 team1 wins -> class W
+  const b3 = (c.pWin - 1) ** 2 + c.pLoss ** 2;
+  assert.ok(Math.abs(cal.brier - (b1 + b2 + b3) / 3) < 1e-12);
+  assert.ok(Math.abs(cal.byCategory.group.brier - (b1 + b2) / 2) < 1e-12);
+});
+
+test("multiclass Brier hits its [0,2] bounds for confident forecasts", () => {
+  // Synthetic 2-team prep with a huge rating gap -> near-certain forecast.
+  const mini = {
+    ratings: [2000, 1000], ti: new Map([["A", 0], ["B", 1]]),
+    groupGames: [{ id: "A|B", a: 0, b: 1 }], ko: [],
+  };
+  const right = analyzeMatchCalibration(mini, { group_results: { "A|B": [3, 0] }, knockout: {} });
+  assert.ok(right.brier < 0.05, "confident and correct -> near 0");
+  assert.ok(right.avgProbActual > 0.9);
+  const wrong = analyzeMatchCalibration(mini, { group_results: { "A|B": [0, 3] }, knockout: {} });
+  assert.ok(wrong.brier > 1.7, "confident and wrong -> near 2");
+});
+
+test("no-skill baseline: 2/3 per group game, 1/2 per knockout", () => {
+  const cal = analyzeMatchCalibration(prep, fixtureResults());
+  assert.ok(Math.abs(cal.byCategory.group.brierBaseline - 2 / 3) < 1e-12);
+  assert.ok(Math.abs(cal.byCategory.ko.brierBaseline - 1 / 2) < 1e-12);
+  assert.ok(Math.abs(cal.brierBaseline - (2 / 3 + 2 / 3 + 1 / 2) / 3) < 1e-12);
+  // baselineProbActual is the average 1/nClasses given to the actual result.
+  assert.ok(Math.abs(cal.baselineProbActual - (1 / 3 + 1 / 3 + 1 / 2) / 3) < 1e-12);
+});
+
+test("avgProbActual averages the probability placed on the realized result", () => {
+  const cal = analyzeMatchCalibration(prep, fixtureResults());
+  const expected = (wdl(g1.a, g1.b, false).pWin + wdl(g2.a, g2.b, false).pDraw
+    + wdl(g1.a, g1.b, true).pWin) / 3;
+  assert.ok(Math.abs(cal.avgProbActual - expected) < 1e-12);
+});
+
+test("ignores unplayed / undecided matches, and handles empty", () => {
   const cal = analyzeMatchCalibration(prep, {
     group_results: { [g1.id]: [3, 1] },
-    knockout: { m73: { team1: g1.a, team2: g1.b } },
+    knockout: { m73: { team1: g1.a, team2: g1.b } },  // participants but no winner
   });
-  assert.equal(cal.count, 3);          // only the one group game
+  assert.equal(cal.nMatches, 1);
   assert.equal(cal.byCategory.ko.count, 0);
+  assert.equal(cal.points.length, 3);
 
   const empty = analyzeMatchCalibration(prep, { group_results: {}, knockout: {} });
-  assert.equal(empty.count, 0);
+  assert.equal(empty.nMatches, 0);
   assert.equal(empty.brier, null);
+  assert.deepEqual(empty.bins, []);
 });
 
-// --- binning + Brier ---------------------------------------------------------
+// --- binning -----------------------------------------------------------------
 
-test("bins partition the points and report correct means", () => {
-  const cal = analyzeMatchCalibration(prep, fixtureResults());
-  const total = cal.bins.reduce((s, b) => s + b.n, 0);
-  assert.equal(total, cal.count, "every point lands in exactly one bin");
+// A fuller fixture: 24 group games -> 72 pooled diagram points.
+function manyResults() {
+  const group_results = {};
+  for (const g of tournament.group_games.slice(0, 24)) group_results[g.id] = [2, 0];
+  return { group_results, knockout: {} };
+}
+
+test("equal-count bins (default) partition the points with near-equal sizes", () => {
+  const cal = analyzeMatchCalibration(prep, manyResults());
+  assert.equal(cal.binMode, "count");
+  assert.equal(cal.bins.reduce((s, b) => s + b.n, 0), cal.points.length);
+  const sizes = cal.bins.map((b) => b.n);
+  assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, "bin sizes differ by at most 1");
+  for (let i = 1; i < cal.bins.length; i++) assert.ok(cal.bins[i].lo >= cal.bins[i - 1].lo);
+});
+
+test("even-width bins partition on CALIB_BINS", () => {
+  const cal = analyzeMatchCalibration(prep, manyResults(), { binMode: "width" });
+  assert.equal(cal.binMode, "width");
   assert.equal(cal.bins.length, CALIB_BINS.length - 1);
-
-  // Recompute each bin's observed frequency straight from the points.
+  assert.equal(cal.bins.reduce((s, b) => s + b.n, 0), cal.points.length);
   for (const b of cal.bins) {
-    const inBin = cal.points.filter((p) =>
-      p.p >= b.lo && (b.hi === 1 ? p.p <= 1 : p.p < b.hi));
+    const inBin = cal.points.filter((p) => p.p >= b.lo && (b.hi === 1 ? p.p <= 1 : p.p < b.hi));
     assert.equal(b.n, inBin.length);
     if (b.n) {
       const obs = inBin.reduce((s, p) => s + p.o, 0) / b.n;
@@ -133,19 +175,4 @@ test("bins partition the points and report correct means", () => {
       assert.equal(b.obsFreq, null);
     }
   }
-});
-
-test("Brier is mean squared error, and a perfect forecast scores 0", () => {
-  const cal = analyzeMatchCalibration(prep, fixtureResults());
-  const manual = cal.points.reduce((s, p) => s + (p.p - p.o) ** 2, 0) / cal.count;
-  assert.ok(Math.abs(cal.brier - manual) < 1e-12);
-  assert.ok(cal.brier >= 0 && cal.brier <= 1);
-});
-
-test("custom (fine-low) bins still partition the data", () => {
-  const fine = [0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 1];
-  const cal = analyzeMatchCalibration(prep, fixtureResults(), { bins: fine });
-  assert.equal(cal.bins.length, fine.length - 1);
-  assert.equal(cal.bins.reduce((s, b) => s + b.n, 0), cal.count);
-  assert.deepEqual(cal.meta.bins, fine);
 });

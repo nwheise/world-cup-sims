@@ -285,8 +285,20 @@ select {
   display: flex; justify-content: space-between; align-items: flex-start;
   gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
 }
-.big-stat { font-size: 1.8rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
-.calib-bins { display: flex; gap: 6px; }
+.big-stat { font-size: 2.2rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
+.gauge { margin: 14px 0 2px; max-width: 460px; }
+.gauge-track {
+  position: relative; height: 8px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent), var(--warn));
+}
+.gauge-marker {
+  position: absolute; top: -4px; width: 3px; height: 16px;
+  background: var(--text); border-radius: 2px; transform: translateX(-50%);
+}
+.gauge-ends { display: flex; justify-content: space-between; margin-top: 5px; }
+.verdict { margin: 10px 0 0; font-size: 0.9rem; }
+.verdict.good { color: var(--accent); }
+.calib-bins { display: flex; gap: 6px; flex: none; }
 .calib-svg { display: block; width: 100%; max-width: 320px; margin: 6px auto; }
 .calib-grid { stroke: var(--panel-2); stroke-width: 1; }
 .calib-diag { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }

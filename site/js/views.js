@@ -4,7 +4,7 @@
  * and event delegation).
  */
 
-import { teamLabel, displayName, flag, kickoffParts, fmtKickoff, fmtTimestamp,
+import { teamLabel, displayName, flag, teamColor, kickoffParts, fmtKickoff, fmtTimestamp,
          slotDesc, ROUND_SHORT, pct, esc } from "./format.js";
 import { scoreMatches, buildTiers, rankMap } from "./schedule.js";
 import { matchWDL } from "./sim-core.js";
@@ -13,28 +13,34 @@ const bar = (p, cls = "") =>
   `<span class="bar ${cls}"><span style="width:${Math.max(0, Math.min(100, p * 100))}%"></span></span>`;
 
 /**
- * Predicted win/draw/loss odds for one match, as its own line: a segmented bar
- * plus team-anchored labels (flag % · draw % · flag %). Group games always have
- * known teams; knockout games show odds only once both participants are locked
+ * Predicted win/draw/loss odds for one match, as its own line: one thick,
+ * neutral-toned bar with the percentages set inside each segment, bracketed by
+ * the two team flags (left flag = left/win segment, right flag = right/loss
+ * segment). The bar stays color-neutral on purpose so it never competes with
+ * team identity — the flags do the anchoring. Group games always have known
+ * teams; knockout games show odds only once both participants are locked
  * (otherwise the matchup doesn't exist yet). The model is rating-only, so this
  * is the same matchWDL the accuracy tab grades.
  */
 function wdlMarkup(na, nb, ratings, knockout) {
   const { pWin, pDraw, pLoss } = matchWDL(ratings[na], ratings[nb], knockout);
   const w = (p) => `${Math.max(0, Math.min(100, p * 100))}%`;
+  // Drop the inner % only for slivers too narrow to hold it; the tooltip and the
+  // sum-to-100 of the others still convey it. Win/loss take each team's color
+  // (draw stays neutral, set in CSS).
+  const seg = (cls, p, color) =>
+    `<span class="wdl-seg ${cls}" style="width:${w(p)}${color ? `;background:${color}` : ""}">${p >= 0.07 ? `<b>${pct(p)}</b>` : ""}</span>`;
   const segs = knockout
-    ? `<span class="wdl-seg wdl-w" style="width:${w(pWin)}"></span><span class="wdl-seg wdl-l" style="width:${w(pLoss)}"></span>`
-    : `<span class="wdl-seg wdl-w" style="width:${w(pWin)}"></span><span class="wdl-seg wdl-d" style="width:${w(pDraw)}"></span><span class="wdl-seg wdl-l" style="width:${w(pLoss)}"></span>`;
-  const labels = knockout
-    ? `${flag(na)} ${pct(pWin)} · ${flag(nb)} ${pct(pLoss)}`
-    : `${flag(na)} ${pct(pWin)} · draw ${pct(pDraw)} · ${flag(nb)} ${pct(pLoss)}`;
+    ? seg("wdl-w", pWin, teamColor(na)) + seg("wdl-l", pLoss, teamColor(nb))
+    : seg("wdl-w", pWin, teamColor(na)) + seg("wdl-d", pDraw) + seg("wdl-l", pLoss, teamColor(nb));
   const title = knockout
     ? `${displayName(na)} win ${pct(pWin)} · ${displayName(nb)} win ${pct(pLoss)}`
     : `${displayName(na)} win ${pct(pWin)} · draw ${pct(pDraw)} · ${displayName(nb)} win ${pct(pLoss)}`;
   return `
     <span class="match-odds" title="${esc(title)}">
+      <span class="wdl-flag">${flag(na)}</span>
       <span class="wdl-bar">${segs}</span>
-      <span class="wdl-pct muted small">${labels}</span>
+      <span class="wdl-flag">${flag(nb)}</span>
     </span>`;
 }
 
@@ -911,20 +917,6 @@ function reliabilityDiagram(bins) {
     </svg>`;
 }
 
-// Where the model's Brier sits between perfect (0, left) and no-skill (right).
-function brierGauge(brier, baseline) {
-  const frac = baseline > 0 ? Math.max(0, Math.min(1, brier / baseline)) : 0;
-  return `
-    <div class="gauge">
-      <div class="gauge-track"><div class="gauge-marker" style="left:${(frac * 100).toFixed(1)}%"></div></div>
-      <div class="gauge-ends muted small">
-        <span>0 · perfect</span>
-        <span>Brier ${brier.toFixed(2)}</span>
-        <span>${baseline.toFixed(2)} · no-skill</span>
-      </div>
-    </div>`;
-}
-
 export function renderAccuracy(S, el) {
   const cal = S.matchCalibration;
   const status = S.asOf
@@ -944,11 +936,17 @@ export function renderAccuracy(S, el) {
   }
 
   const g = cal.byCategory.group, k = cal.byCategory.ko;
-  const beats = cal.brier < cal.brierBaseline;
   const nGames = `${cal.nMatches} match${cal.nMatches === 1 ? "" : "es"}`;
-  const verdict = beats
-    ? `Better than a no-skill guess, so the model has real signal. Still just ${nGames}, so read it as encouraging, not proof.`
-    : `Not beating a no-skill guess yet. Just ${nGames} so far, so it's too early to tell.`;
+  // "% better than a random guess": how much more probability the model put on
+  // the result that actually happened than a no-skill (uniform) guess would.
+  const gain = cal.baselineProbActual > 0
+    ? (cal.avgProbActual - cal.baselineProbActual) / cal.baselineProbActual : 0;
+  const skillPct = Math.round(Math.abs(gain) * 100);
+  const skillLine = gain > 0.005
+    ? `Across ${nGames} so far, the model's win/draw/loss calls were <strong>${skillPct}% better</strong> than a random guess.`
+    : gain < -0.005
+    ? `Across ${nGames} so far, the model's win/draw/loss calls were <strong>${skillPct}% worse</strong> than a random guess.`
+    : `Across ${nGames} so far, the model's win/draw/loss calls were about as good as a random guess.`;
   const catRow = (label, c) => c.count
     ? `<tr><td>${label}</td><td>${c.count}</td><td>${c.brier.toFixed(3)}</td><td class="muted">${c.brierBaseline.toFixed(3)}</td></tr>`
     : "";
@@ -956,17 +954,9 @@ export function renderAccuracy(S, el) {
   el.innerHTML = `
     <div class="card summary">
       <h2>📈 Prediction accuracy</h2>
-      <p>How accurate are the model's match predictions? Two readings below: a plain
-      score, and a reliability diagram of whether things happen as often as predicted.</p>
+      <p>How accurate are the model's match predictions? The reliability diagram below checks
+      whether things happen as often as predicted.</p>
       ${status ? `<p class="muted small">${status}</p>` : ""}
-    </div>
-
-    <div class="card calib">
-      <div class="big-stat">${pct(cal.avgProbActual)}</div>
-      <div class="muted small">average probability the model gave to the result that actually
-      happened — a no-skill guess would average ${pct(cal.baselineProbActual)}.</div>
-      ${brierGauge(cal.brier, cal.brierBaseline)}
-      <p class="verdict ${beats ? "good" : ""}">${verdict}</p>
     </div>
 
     <div class="card calib">
@@ -979,6 +969,7 @@ export function renderAccuracy(S, el) {
         </div>
       </div>
       ${reliabilityDiagram(cal.bins)}
+      <p class="calib-skill">${skillLine}</p>
       <table class="calib-cat">
         <tr><th>Category</th><th>Matches</th><th>Brier</th><th>No-skill</th></tr>
         ${catRow("Group games (W/D/L)", g)}

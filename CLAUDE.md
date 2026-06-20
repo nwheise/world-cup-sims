@@ -233,8 +233,10 @@ no-results baseline.)
   (asOf-filtered) `S.results` on every results/time-machine change — synchronous, no worker,
   no replay (the model is static given ratings). Wound back, fewer matches are graded.
 - **Reader-facing framing** (tab headline + "How this works" dialog): lead with the
-  average-chance-vs-no-skill stat and a gauge of Brier between perfect (0) and no-skill;
-  one tournament with correlated outcomes, so descriptive not a verdict; football is
+  reliability diagram, then one plain line under it — "the win/draw/loss calls were X% better
+  than a random guess", where X = relative gain of `avgProbActual` over `baselineProbActual`
+  (handles worse/about-even too); Brier lives only in the per-category table and caveats.
+  One tournament with correlated outcomes, so descriptive not a verdict; football is
   high-variance (perfect is unreachable); model is rating-only; knockout draws folded into W/L.
 
 ## The time-machine (in `site/js/sim-core.js` `resultsAsOf`; header picker)

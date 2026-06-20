@@ -39,11 +39,11 @@ Seven tabs, all driven by the one simulation:
    match, top matchups (click a team on each side to query any exact pairing), group
    standings with advancement odds, and champion odds. Your attended matches stay pinned on
    top.
-7. **📈 Accuracy** — how good the model's per-match predictions are: it leads with the average
-   probability the model gave to what actually happened (versus a no-skill guess), plus a
-   reliability diagram of the win/draw/loss calls against real results (do the ~60% calls
-   happen ~60% of the time?) and the multiclass Brier score. One tournament with correlated
-   outcomes, so it's descriptive rather than a verdict.
+7. **📈 Accuracy** — how good the model's per-match predictions are: a reliability diagram of
+   the win/draw/loss calls against real results (do the ~60% calls happen ~60% of the time?),
+   a one-line summary of how much better than a random guess the calls have been, and the
+   multiclass Brier score. One tournament with correlated outcomes, so it's descriptive rather
+   than a verdict.
 
 A **🕰 time machine** in the header rewinds every tab to how it looked right after any
 earlier match, using only the results played up to that point.

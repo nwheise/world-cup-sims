@@ -25,8 +25,27 @@ const FLAGS = {
   "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "Croatia": "🇭🇷", "Ghana": "🇬🇭", "Panama": "🇵🇦",
 };
 
+// One representative team color each, deliberately mid-dark and a touch muted so
+// the white percentages on the W/D/L bar stay legible (very light flag colors
+// like yellow/orange/sky are darkened here). The flags still do the anchoring.
+const COLORS = {
+  "Mexico": "#157f3c", "South Africa": "#0a7d5a", "South Korea": "#c0392b", "Czechia": "#11457e",
+  "Canada": "#c83a34", "Bosnia-Herzegovina": "#2f5fa8", "Qatar": "#7a213f", "Switzerland": "#cf2e2e",
+  "Brazil": "#169148", "Morocco": "#166b3a", "Haiti": "#1b4f9c", "Scotland": "#1f4f8f",
+  "USA": "#2a4a9c", "Paraguay": "#c0392b", "Australia": "#0a7d4f", "Turkiye": "#d12e2e",
+  "Germany": "#2f2f35", "Curacao": "#1f5fa0", "Cote d'Ivoire": "#c15f15", "Ecuador": "#1f3f8f",
+  "Netherlands": "#c15f15", "Japan": "#b01a3a", "Sweden": "#1f6fb2", "Tunisia": "#c0392b",
+  "Belgium": "#a8202c", "Egypt": "#b01a2a", "Iran": "#1f7a3d", "New Zealand": "#303034",
+  "Spain": "#b81d2a", "Cabo Verde": "#1f4f9c", "Saudi Arabia": "#166b3a", "Uruguay": "#2477b0",
+  "France": "#28408c", "Senegal": "#157f3c", "Iraq": "#1f7a3d", "Norway": "#b01a2a",
+  "Argentina": "#3a82b8", "Algeria": "#166b3a", "Austria": "#c0392b", "Jordan": "#7a213f",
+  "Portugal": "#7a1f2e", "DR Congo": "#2a6fb0", "Uzbekistan": "#1f8a4d", "Colombia": "#a8791a",
+  "England": "#c0392b", "Croatia": "#b8323e", "Ghana": "#1f7a3d", "Panama": "#1f3f8f",
+};
+
 export const displayName = (t) => DISPLAY[t] || t;
 export const flag = (t) => FLAGS[t] || "";
+export const teamColor = (t) => COLORS[t] || "#3b4a6b";
 export const teamLabel = (t) => `${flag(t)} ${displayName(t)}`.trim();
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",

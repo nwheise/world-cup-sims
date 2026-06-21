@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-06-21T18:56:10Z",
+ "fetched_at": "2026-06-21T21:45:10Z",
  "group_results": {
   "Argentina|Algeria": [
    3,
@@ -16,6 +16,10 @@
   "Belgium|Egypt": [
    1,
    1
+  ],
+  "Belgium|Iran": [
+   0,
+   0
   ],
   "Brazil|Haiti": [
    3,

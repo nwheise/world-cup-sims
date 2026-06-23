@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import {
   makeRng, expectedScore, simulateMatch, rankGroup,
   prepare, prepareResults, runSims,
-  appearanceProbs, groupProbs, analyzeCheer, analyzeTeamPath,
+  appearanceProbs, groupProbs, forcedKnockout, analyzeCheer, analyzeTeamPath,
   emphasize, assessLoyalty,
 } from "../site/js/sim-core.js";
 import {
@@ -709,4 +709,56 @@ test("analyzeTeamPath: known-participant unplayed knockout match gets a row", ()
   assert.ok(res.rows.every((r) => r.kind === "ko"));
   // pReach[0] = 1: the team is already in the bracket.
   assert.ok(Math.abs(res.baseline.pReach[0] - 1) < 1e-12);
+});
+
+test("forcedKnockout: nothing is forced before any group is decided", () => {
+  // The shared no-results run: every slot is still a distribution.
+  const forced = forcedKnockout(prep, store);
+  assert.equal(forced.length, 32);
+  assert.ok(forced.every(([a, b]) => a === null && b === null));
+});
+
+test("forcedKnockout: every group pinned locks all 16 R32 lineups", () => {
+  const rnd = makeRng(123);
+  const fixedScores = {};
+  for (const g of prep.groupGames) {
+    const [ga, gb] = simulateMatch(prep.ratings[g.a], prep.ratings[g.b], false, rnd);
+    fixedScores[g.id] = [ga, gb];
+  }
+  const fixed = prepareResults(prep, { group_results: fixedScores, knockout: {} });
+  const st = runSims(prep, fixed, 2000, 5);
+  const forced = forcedKnockout(prep, st);
+  // R32 = matches 73..88 (indices 0..15). With every group settled, each side
+  // is forced to the (identical-across-sims) bracket lineup — including the
+  // third-place slots, since the Annex C assignment is now deterministic too.
+  for (let i = 0; i < 16; i++) {
+    assert.equal(forced[i][0], st.koTeams[2 * i], `m${73 + i} slot1 forced`);
+    assert.equal(forced[i][1], st.koTeams[2 * i + 1], `m${73 + i} slot2 forced`);
+  }
+  // The final's participants depend on simulated knockout winners, so they're
+  // nowhere near forced.
+  assert.deepEqual(forced[31], [null, null]);
+});
+
+test("forcedKnockout feeds analyzeTeamPath knockout rows with no results.json knockout", () => {
+  const rnd = makeRng(321);
+  const fixedScores = {};
+  for (const g of prep.groupGames) {
+    const [ga, gb] = simulateMatch(prep.ratings[g.a], prep.ratings[g.b], false, rnd);
+    fixedScores[g.id] = [ga, gb];
+  }
+  const fixed = prepareResults(prep, { group_results: fixedScores, knockout: {} });
+  const st = runSims(prep, fixed, 3000, 9);
+  // Merge forced lineups into koKnown, exactly as the worker does post-sim.
+  forcedKnockout(prep, st).forEach(([t1, t2], i) => {
+    if (!fixed.koKnown[i] && t1 !== null && t2 !== null) fixed.koKnown[i] = [t1, t2];
+  });
+  const followed = prep.teams[fixed.koKnown[0][0]]; // slot1 of M73
+  const res = analyzeTeamPath(prep, fixed, st, followed);
+  const r73 = res.rows.find((r) => r.id === "m73");
+  assert.ok(r73, "the followed team's R32 game is scored once its lineup is forced");
+  assert.equal(r73.kind, "ko");
+  assert.ok(r73.ownGame);
+  // Every group game is played, so only knockout rows can remain.
+  assert.ok(res.rows.length > 0 && res.rows.every((r) => r.kind === "ko"));
 });

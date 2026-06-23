@@ -17,7 +17,7 @@
 
 import {
   prepare, prepareResults, runSims,
-  appearanceProbs, groupProbs, analyzeCheer, analyzeTeamPath,
+  appearanceProbs, groupProbs, forcedKnockout, analyzeCheer, analyzeTeamPath,
 } from "./sim-core.js";
 
 let prep = null, fixed = null, store = null;
@@ -31,6 +31,15 @@ self.onmessage = (ev) => {
       (done, total) => self.postMessage({ type: "progress", done, total }));
     const probs = appearanceProbs(prep, store);
     const gp = groupProbs(prep, store);
+    // A knockout slot the bracket routes the same team into in every sim is
+    // forced by the results so far (the must-watch tab's "decided" signal).
+    // Merge both-known forced matchups into fixed.koKnown so the cheer guide
+    // and team path can bucket them; this never re-runs the sim (the store is
+    // already built and simulateTournament keys off koWinner, not koKnown).
+    const forced = forcedKnockout(prep, store);
+    forced.forEach(([t1, t2], i) => {
+      if (!fixed.koKnown[i] && t1 !== null && t2 !== null) fixed.koKnown[i] = [t1, t2];
+    });
     self.postMessage({
       type: "simulated",
       probs: {
@@ -52,6 +61,15 @@ self.onmessage = (ev) => {
         koKnown: prep.ko
           .map((m, i) => [m.id, fixed.koKnown[i]?.map((t) => prep.teams[t]) ?? null])
           .filter(([, v]) => v)
+          .reduce((o, [k, v]) => ((o[k] = v), o), {}),
+        // Per-side forced participants (a locked side shows even while the
+        // other is still a distribution): match id -> [name|null, name|null].
+        koSlots: prep.ko
+          .map((m, i) => [m.id, [
+            forced[i][0] === null ? null : prep.teams[forced[i][0]],
+            forced[i][1] === null ? null : prep.teams[forced[i][1]],
+          ]])
+          .filter(([, [a, b]]) => a || b)
           .reduce((o, [k, v]) => ((o[k] = v), o), {}),
       },
     });

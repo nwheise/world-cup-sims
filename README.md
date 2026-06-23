@@ -17,7 +17,10 @@ Web Analytics with GoatCounter: https://worldcupcheerguide.goatcounter.com/
 Seven tabs, all driven by the one simulation:
 
 1. **🎟️ My matches** — check off any of the 104 matches you're attending. Each match also
-   shows the model's predicted win/draw/loss odds.
+   shows the model's predicted win/draw/loss odds. Knockout games show their bracket slots
+   ("Group G winner", "3rd place …") until the results lock a real team in, then fill in
+   that team automatically (and the win/draw/loss line appears once both sides are set) —
+   so a clinched group winner shows up in its R32 game before FIFA publishes the fixture.
 2. **❤️ My teams** — rank the teams you want to see via quick head-to-head picks
    ("Sweden *or* Algeria?"), with ties, undo, and ⭐ pins for absolute favorites. With no
    picks the ranking already follows team strength, so every other tab works out of the box.
@@ -37,8 +40,9 @@ Seven tabs, all driven by the one simulation:
    route them somewhere friendlier, but never tells you to root against your own team.
 6. **📊 Probabilities** — preference-independent forecasts: per-slot odds for every knockout
    match, top matchups (click a team on each side to query any exact pairing), group
-   standings with advancement odds, and champion odds. Your attended matches stay pinned on
-   top.
+   standings with advancement odds, and champion odds. A slot a team has clinched shows that
+   team locked in (✓) while the other side still lists its odds. Your attended matches stay
+   pinned on top.
 7. **📈 Accuracy** — how good the model's per-match predictions are: a reliability diagram of
    the win/draw/loss calls against real results (do the ~60% calls happen ~60% of the time?),
    and a multiclass Brier score for our model set against a random guess. One tournament with

@@ -385,6 +385,32 @@ export function appearanceProbs(prep, store, topMatchups = Infinity) {
   };
 }
 
+/**
+ * After simulation, a knockout slot whose participant is the same team in EVERY
+ * sim is forced by the results so far: the bracket can't route anyone else there,
+ * so it's effectively known even before FIFA publishes the fixture. Returns
+ * Array(32) of [t1 | null, t2 | null] team indices — null on a side that isn't
+ * yet unanimous. This is the same "decided" signal the must-watch tab reads off
+ * the collapsed slot odds (a slot's appearance distribution has length 1),
+ * surfaced here for the display and analysis layers.
+ */
+export function forcedKnockout(prep, store) {
+  const { n, koTeams } = store;
+  const out = new Array(32);
+  for (let i = 0; i < 32; i++) {
+    out[i] = n ? [koTeams[2 * i], koTeams[2 * i + 1]] : [null, null];
+  }
+  for (let s = 1; s < n; s++) {
+    const base = s * 64;
+    for (let i = 0; i < 32; i++) {
+      const slot = out[i];
+      if (slot[0] !== null && koTeams[base + 2 * i] !== slot[0]) slot[0] = null;
+      if (slot[1] !== null && koTeams[base + 2 * i + 1] !== slot[1]) slot[1] = null;
+    }
+  }
+  return out;
+}
+
 /** Per team: P(finish 1st / 2nd / 3rd in group) and P(reach knockout). */
 export function groupProbs(prep, store) {
   const { n, positions, koTeams } = store;

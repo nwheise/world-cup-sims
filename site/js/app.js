@@ -34,7 +34,7 @@ const S = {
   tournament: null, rawResults: null, results: null, prep: null,
   asOf: null, asOfLabel: null, played: [],
   allMatches: [], ko: [], koById: new Map(), groupById: new Map(),
-  koKnown: {}, playedCount: 0, ratings: {}, standings: {},
+  koKnown: {}, koSlots: {}, playedCount: 0, ratings: {}, standings: {},
   matchCalibration: null,                    // per-match W/D/L accuracy (📈 tab)
   probs: null, groupProbs: null, meta: { nSims: 0, seed: 42 },
   simStatus: { state: "running", done: 0, total: 0 },
@@ -209,6 +209,7 @@ function setAsOf(cutoff) {
 function startSimulation() {
   S.simStatus = { state: "running", done: 0, total: S.settings.nSims };
   S.probs = null;
+  S.koSlots = {};
   S.analysis = null;
   S.pathAnalysis = null;
   renderCheer(S, sections.guide);
@@ -275,6 +276,7 @@ function onWorkerMessage(ev) {
     S.probs = msg.probs;
     S.groupProbs = msg.groupProbs;
     S.meta = msg.meta;
+    S.koSlots = msg.meta.koSlots || {};
     renderAll();
     scheduleAnalyze();
     schedulePathAnalyze();

@@ -13,6 +13,18 @@ const bar = (p, cls = "") =>
   `<span class="bar ${cls}"><span style="width:${Math.max(0, Math.min(100, p * 100))}%"></span></span>`;
 
 /**
+ * A knockout match's participants per side, [name|null, name|null]: real
+ * results (played or FIFA-assigned) first, then forced slots from the
+ * simulation (a team the bracket routes into that slot in every sim). A side
+ * stays null while it's still a distribution, so one locked side can show while
+ * the other still lists odds.
+ */
+const koResolved = (S, m) => {
+  const known = S.koKnown[m.id], forced = S.koSlots?.[m.id];
+  return [known?.[0] ?? forced?.[0] ?? null, known?.[1] ?? forced?.[1] ?? null];
+};
+
+/**
  * Predicted win/draw/loss odds for one match, as its own line: one thick,
  * neutral-toned bar with the percentages set inside each segment, bracketed by
  * the two team flags (left flag = left/win segment, right flag = right/loss
@@ -324,13 +336,14 @@ export function renderMatches(S, el) {
         (res ? ` <span class="score">${res[0]}–${res[1]}</span>` : "");
       wdl = wdlMarkup(m.a, m.b, S.ratings, false);
     } else {
-      const known = S.koKnown[m.id];
+      const [r1, r2] = koResolved(S, m);
       const played = S.results?.knockout?.[m.id];
-      label = known
-        ? `${teamLabel(known[0])} <em>vs</em> ${teamLabel(known[1])}` +
-          (played?.score ? ` <span class="score">${played.score[0]}–${played.score[1]}</span>` : "")
-        : `${esc(slotDesc(m.slot1))} <em>vs</em> ${esc(slotDesc(m.slot2))}`;
-      if (known) wdl = wdlMarkup(known[0], known[1], S.ratings, true);
+      const side = (name, slot) => (name ? teamLabel(name) : esc(slotDesc(slot)));
+      label = `${side(r1, m.slot1)} <em>vs</em> ${side(r2, m.slot2)}` +
+        (r1 && r2 && played?.score
+          ? ` <span class="score">${played.score[0]}–${played.score[1]}</span>` : "");
+      // W/D/L odds only once both participants are locked (the matchup exists).
+      if (r1 && r2) wdl = wdlMarkup(r1, r2, S.ratings, true);
     }
     return `
       <label class="match-row ${checked ? "selected" : ""}">
@@ -755,13 +768,13 @@ export function renderProbs(S, el) {
   };
 
   const koCard = (m, i) => {
-    const known = S.koKnown[m.id];
+    const [r1, r2] = koResolved(S, m);
     const played = S.results?.knockout?.[m.id];
     const result = played?.score
       ? `<p class="result">Final: <strong>${teamLabel(played.team1)} ${played.score[0]}–${played.score[1]} ${teamLabel(played.team2)}</strong></p>`
       : "";
     const probs = S.probs.matches[i];
-    const locked = known?.[0] && known?.[1];
+    const locked = r1 && r2;
     // Top matchups (joint odds) — skip once the real pairing is locked in.
     const matchups = !locked && probs.matchups?.length > 1 ? `
       <div class="matchups">
@@ -772,7 +785,7 @@ export function renderProbs(S, el) {
       </div>` : "";
     // "What about X vs Y?" — a locked side counts as selected automatically.
     const sel = S.matchupSel[m.id] || {};
-    const selA = known?.[0] ?? sel[1], selB = known?.[1] ?? sel[2];
+    const selA = r1 ?? sel[1], selB = r2 ?? sel[2];
     let selLine = "";
     if (!locked && (selA || selB)) {
       if (selA && selB) {
@@ -795,8 +808,8 @@ export function renderProbs(S, el) {
         </header>
         ${result}
         <div class="slots">
-          <div><h4>${esc(slotDesc(m.slot1))}</h4><ul>${slotList(probs.slot1, known?.[0], m.id, 1, sel[1])}</ul></div>
-          <div><h4>${esc(slotDesc(m.slot2))}</h4><ul>${slotList(probs.slot2, known?.[1], m.id, 2, sel[2])}</ul></div>
+          <div><h4>${esc(slotDesc(m.slot1))}</h4><ul>${slotList(probs.slot1, r1, m.id, 1, sel[1])}</ul></div>
+          <div><h4>${esc(slotDesc(m.slot2))}</h4><ul>${slotList(probs.slot2, r2, m.id, 2, sel[2])}</ul></div>
         </div>
         ${selLine}
         ${matchups}

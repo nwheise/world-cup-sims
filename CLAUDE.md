@@ -25,7 +25,7 @@ for the JS test suite (see "Key findings"); the JS engine is asserted to reprodu
 | `site/data/tournament.json` | **Static facts** (committed): groups, ratings, all 104 matches with kickoffs/venues/slot codes, Annex C. Regenerate via `build_data.py` only if FIFA reschedules or ratings are refreshed. |
 | `site/data/results.json` | **Live results** (committed, refreshed by the cron): `group_results` keyed `"TeamA\|TeamB"` (90-min scores), `knockout` keyed `m73..m104` (participants once known; score + winner once played). |
 | `scripts/build_data.py` | Generates tournament.json. Self-contained: embeds GROUPS/RATINGS (see Model details) and fully validates `annex_c.txt` on every run (rows 1–495, every C(12,8) combo exactly once, per-row permutation, per-slot legality); cross-checks the fetched openfootball schedule against the verified third-place slot table below. |
-| `scripts/update_results.py` | Live results → results.json. **Primary: ESPN public scoreboard API** (keyless, near-live; group games matched by team pair, knockout events by unique UTC kickoff; winner from ESPN's per-competitor flag so ET/pens are correct). **Fallback: openfootball** (volunteer-run; unreliable mid-tournament — in 2022 its JSON got scores backfilled years later). Idempotent; no-op after Aug 1, 2026. `parse_espn()` is pure and tested. |
+| `scripts/update_results.py` | Live results → results.json from the **ESPN public scoreboard API** (keyless, near-live; group games matched by team pair, knockout events by unique UTC kickoff; winner from ESPN's per-competitor flag so ET/pens are correct). On an ESPN failure it logs a warning and leaves results.json untouched (the next run retries). Idempotent; no-op after Aug 1, 2026. `parse_espn()` is pure and tested. |
 | `annex_c.txt` | FIFA's official Annex C third-place allocation table — all 495 C(12,8) combinations, transcribed from the published schedule. **Do not regenerate or hand-edit**; `build_data.py` re-validates it structurally on every run. |
 | `tests/sim-core.test.mjs` | **JS suite** (`node --test "tests/**/*.test.mjs"`, no npm deps, node ≥ 20). Invariants (groups/ratings/annex, H2H-beats-GD tiebreaker case, bracket wiring, seed reproducibility) + cross-validation against the Python sim's published findings + behavior pins: real results pinning, known-knockout-winner honoring, per-slot probs sum to 1, matchup joint↔marginal consistency, loyalty guard (self/other/suppress incl. the Switzerland/Canada/M85 regression), bucket==pinned-run conditioning (cheer AND team-path), team-path internal identities (survival-curve monotonicity, tail-sum E[depth], cross-checks vs groupProbs/appearanceProbs), equal-preference Elo, pin dominance. |
 | `tests/calibration.test.mjs` | **JS suite** for per-match accuracy: `matchWDL` (proper distribution, even-team symmetry, win↔loss mirror, knockout `pDraw=0` + tiebreak-share cap, MC cross-check) and `analyzeMatchCalibration` (point counts per category, realized-outcome marking, ignores unplayed/undecided, fixed even-width bins partition the data with correct means, Brier = MSE, custom `binEdges`). |
@@ -281,10 +281,12 @@ on-screen copy, code comments, commit messages, and replies.
   verified via web search/fetch on June 11, 2026 (FIFA schedule via Wikipedia's knockout
   stage page, ESPN/Olympics for playoff results, multiple outlets for the 2026 tiebreaker
   changes). `build_data.py` re-asserts the critical facts on every run.
-- ESPN was chosen as the live source after openfootball failed empirically on opening
-  night (no score 2h after FT; in 2022 its JSON was backfilled years later). ESPN had the
-  opening final score within minutes. If ESPN's endpoint changes shape, `parse_espn`
-  raises and the workflow falls back to openfootball.
+- ESPN is the live results source: it had the opening final score within minutes, while
+  openfootball (once wired as a fallback) failed empirically on opening night and never
+  once produced a result, so the fallback was removed. If ESPN's endpoint changes shape,
+  `parse_espn` raises, `update_results.py` logs a warning and leaves results.json untouched,
+  and the next scheduled run retries. (openfootball is still the static schedule source in
+  `build_data.py`, run only when regenerating tournament.json.)
 - Anything about *actual tournament results* must come from the live pipeline — do not
   trust model memory for results.
 - After ANY change to `site/js` or the scripts: `node --test "tests/**/*.test.mjs"` and

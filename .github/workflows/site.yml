@@ -1,6 +1,6 @@
 # Builds and deploys the static site to GitHub Pages, and — on the schedule —
-# refreshes site/data/results.json (ESPN scoreboard first, openfootball as
-# fallback) so the deployed probabilities track the real tournament.
+# refreshes site/data/results.json (from the ESPN scoreboard) so the deployed
+# probabilities track the real tournament.
 #
 # One workflow on purpose: commits pushed with GITHUB_TOKEN do not trigger
 # other workflows, so the scheduled run must deploy Pages itself after
@@ -39,7 +39,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Refresh live results (scheduled / manual runs only)
         if: github.event_name != 'push'
@@ -49,13 +49,13 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add site/data/results.json
-            git commit -m "Update live results from openfootball"
+            git commit -m "Update live results from ESPN"
             git push
           else
             echo "results unchanged"
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
 
@@ -96,11 +96,11 @@ jobs:
               json.dump(data, f, indent=1, sort_keys=True)
           EOF
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

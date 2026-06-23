@@ -287,21 +287,26 @@ select {
 .wdl-seg.wdl-d { background: #2b3450; }
 
 /* --- accuracy / reliability diagram --- */
-.calib-head {
-  display: flex; justify-content: space-between; align-items: flex-start;
-  gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
-}
-.calib-skill { margin: 10px 0 0; font-size: 0.95rem; text-align: center; }
-.calib-bins { display: flex; gap: 6px; flex: none; }
-.calib-svg { display: block; width: 100%; max-width: 320px; margin: 6px auto; }
+.calib-title { margin: 0 0 2px; text-align: center; font-size: 1rem; }
+.calib-svg { display: block; width: 100%; max-width: 680px; margin: 6px auto 0; }
+.calib-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 16px; margin: 4px 0 2px; }
+.calib-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.calib-legend i { display: inline-block; flex: none; }
+.sw-band { width: 16px; height: 4px; border-radius: 2px; background: var(--accent); }
+.sw-step { width: 16px; height: 0; border-top: 2.5px dashed var(--muted); }
+.sw-whisker { width: 2px; height: 14px; background: var(--accent); opacity: 0.45; }
 .calib-grid { stroke: var(--panel-2); stroke-width: 1; }
-.calib-diag { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
-.calib-dot { fill: var(--accent); fill-opacity: 0.85; }
-.calib-whisker { stroke: var(--accent-2); stroke-width: 1.5; }
+.calib-step { stroke: var(--muted); stroke-width: 2.5; stroke-dasharray: 5 4; }
+.calib-band { stroke: var(--accent); stroke-width: 4; stroke-linecap: round; }
+.calib-whisker { stroke: var(--accent); stroke-width: 1.5; stroke-opacity: 0.45; }
 .calib-axis { fill: var(--muted); font-size: 10px; }
-.calib-cat { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.9rem; }
-.calib-cat th, .calib-cat td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--panel-2); }
+.calib-cat { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.9rem; table-layout: fixed; }
+.calib-cat col.c-cat { width: 38%; }
+.calib-cat col.c-n { width: 14%; }
+.calib-cat col.c-m, .calib-cat col.c-r { width: 24%; }
+.calib-cat th, .calib-cat td { text-align: center; padding: 6px 10px; border-bottom: 1px solid var(--panel-2); }
 .calib-cat th { color: var(--accent-2); font-weight: 600; }
+.calib-cat .grp { border-left: 1px solid var(--panel-2); }
 .caveats { padding-left: 18px; }
 .caveats li { margin: 6px 0; }
 

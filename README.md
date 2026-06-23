@@ -41,9 +41,8 @@ Seven tabs, all driven by the one simulation:
    top.
 7. **📈 Accuracy** — how good the model's per-match predictions are: a reliability diagram of
    the win/draw/loss calls against real results (do the ~60% calls happen ~60% of the time?),
-   a one-line summary of how much better than a random guess the calls have been, and the
-   multiclass Brier score. One tournament with correlated outcomes, so it's descriptive rather
-   than a verdict.
+   and a multiclass Brier score for our model set against a random guess. One tournament with
+   correlated outcomes, so it's descriptive rather than a verdict.
 
 A **🕰 time machine** in the header rewinds every tab to how it looked right after any
 earlier match, using only the results played up to that point.

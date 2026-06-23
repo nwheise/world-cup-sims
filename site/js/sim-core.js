@@ -438,7 +438,9 @@ function makeBin(pts, lo, hi) {
   };
 }
 
-// Even-width bins on fixed edges (final bucket closed on the right).
+// Even-width bins on fixed edges (final bucket closed on the right). Every bin
+// covers a clear, equal predicted-probability range, so a reader always knows
+// what span each reliability point stands for.
 function binsByWidth(points, edges) {
   const buckets = Array.from({ length: edges.length - 1 }, () => []);
   for (const q of points) {
@@ -449,23 +451,6 @@ function binsByWidth(points, edges) {
   return buckets.map((b, i) => makeBin(b, edges[i], edges[i + 1]));
 }
 
-// Equal-count bins: sort by p, split into contiguous near-equal chunks, so every
-// dot rests on a similar sample size (and similar-width Wilson interval).
-function binsByCount(points) {
-  if (!points.length) return [];
-  const sorted = [...points].sort((a, b) => a.p - b.p);
-  const nBins = Math.max(3, Math.min(8, Math.round(sorted.length / 16)));
-  const out = [];
-  for (let i = 0; i < nBins; i++) {
-    const start = Math.floor(i * sorted.length / nBins);
-    const end = Math.floor((i + 1) * sorted.length / nBins);
-    if (end <= start) continue;
-    const chunk = sorted.slice(start, end);
-    out.push(makeBin(chunk, chunk[0].p, chunk[chunk.length - 1].p));
-  }
-  return out;
-}
-
 /**
  * Grade the model's predicted win/draw/loss against what actually happened, for
  * every played match. W/D/L is a multi-class system — group games have 3 classes
@@ -473,21 +458,23 @@ function binsByCount(points) {
  * multiclass Brier (scikit-learn's definition): per match, SUM the squared error
  * over its classes, then average over matches. Range [0, 2]; lower is better.
  *
- * Two reader-facing summaries make that number legible: `avgProbActual`, the
- * average probability the model gave to the result that actually happened, vs a
- * no-skill 1/nClasses guess (`baselineProbActual`); and `brierBaseline`, the
- * Brier of that same no-skill forecast. The reliability diagram pools the
- * per-class (probability, did-it-happen) pairs — the standard multiclass
- * calibration curve — into equal-count (default) or even-width bins
- * (`opts.binMode = "count" | "width"`).
+ * The no-skill baseline (`brierBaseline`) is the Brier of a uniform 1/nClasses
+ * forecast, so the table can show our model's Brier next to a random guess's.
+ * The reliability diagram pools the per-class (probability, did-it-happen) pairs
+ * — the standard multiclass calibration curve — into fixed even-width buckets
+ * (`opts.binEdges`, default `CALIB_BINS`).
  *
  * Honors the time machine implicitly: pass results already filtered through
  * resultsAsOf and only matches played by that cutoff are graded. Forecasts are
  * the rating-only matchWDL, so no simulation, store, or replay is needed.
+ *
+ * Reliability points are pooled into fixed even-width buckets (`opts.binEdges`,
+ * default `CALIB_BINS` = ten 10-point buckets), so every point on the curve
+ * stands for a clear, equal predicted-probability range.
  */
 export function analyzeMatchCalibration(prep, results, opts = {}) {
   const { ratings, groupGames, ko, ti } = prep;
-  const widthMode = opts.binMode === "width";
+  const edges = opts.binEdges || CALIB_BINS;
 
   // One record per played match: its class probabilities and the realized class.
   const matches = [];
@@ -534,16 +521,13 @@ export function analyzeMatchCalibration(prep, results, opts = {}) {
   return {
     brier: mean(matches, matchBrier),
     brierBaseline: mean(matches, baselineBrier),
-    avgProbActual: mean(matches, (mt) => mt.classes[mt.actual]),
-    baselineProbActual: mean(matches, (mt) => 1 / Object.keys(mt.classes).length),
     nMatches: matches.length,
-    bins: widthMode ? binsByWidth(points, CALIB_BINS) : binsByCount(points),
+    bins: binsByWidth(points, edges),
     byCategory: {
       group: summarize(matches.filter((m) => m.category === "group")),
       ko: summarize(matches.filter((m) => m.category === "ko")),
     },
     points,
-    binMode: widthMode ? "width" : "count",
   };
 }
 

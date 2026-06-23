@@ -28,7 +28,7 @@ for the JS test suite (see "Key findings"); the JS engine is asserted to reprodu
 | `scripts/update_results.py` | Live results → results.json. **Primary: ESPN public scoreboard API** (keyless, near-live; group games matched by team pair, knockout events by unique UTC kickoff; winner from ESPN's per-competitor flag so ET/pens are correct). **Fallback: openfootball** (volunteer-run; unreliable mid-tournament — in 2022 its JSON got scores backfilled years later). Idempotent; no-op after Aug 1, 2026. `parse_espn()` is pure and tested. |
 | `annex_c.txt` | FIFA's official Annex C third-place allocation table — all 495 C(12,8) combinations, transcribed from the published schedule. **Do not regenerate or hand-edit**; `build_data.py` re-validates it structurally on every run. |
 | `tests/sim-core.test.mjs` | **JS suite** (`node --test "tests/**/*.test.mjs"`, no npm deps, node ≥ 20). Invariants (groups/ratings/annex, H2H-beats-GD tiebreaker case, bracket wiring, seed reproducibility) + cross-validation against the Python sim's published findings + behavior pins: real results pinning, known-knockout-winner honoring, per-slot probs sum to 1, matchup joint↔marginal consistency, loyalty guard (self/other/suppress incl. the Switzerland/Canada/M85 regression), bucket==pinned-run conditioning (cheer AND team-path), team-path internal identities (survival-curve monotonicity, tail-sum E[depth], cross-checks vs groupProbs/appearanceProbs), equal-preference Elo, pin dominance. |
-| `tests/calibration.test.mjs` | **JS suite** for per-match accuracy: `matchWDL` (proper distribution, even-team symmetry, win↔loss mirror, knockout `pDraw=0` + tiebreak-share cap, MC cross-check) and `analyzeMatchCalibration` (point counts per category, realized-outcome marking, ignores unplayed/undecided, bins partition the data with correct means, Brier = MSE, custom fine-low bins). |
+| `tests/calibration.test.mjs` | **JS suite** for per-match accuracy: `matchWDL` (proper distribution, even-team symmetry, win↔loss mirror, knockout `pDraw=0` + tiebreak-share cap, MC cross-check) and `analyzeMatchCalibration` (point counts per category, realized-outcome marking, ignores unplayed/undecided, fixed even-width bins partition the data with correct means, Brier = MSE, custom `binEdges`). |
 | `test_update_results.py` | **Python suite** (`python3 -m unittest test_update_results`). ESPN parser (name mapping, pair flip, placeholders, pens-decided winner, malformed-feed guard) + build_data embedded-data integrity + Annex C validation + committed-tournament.json consistency. |
 | `.github/workflows/site.yml` | One workflow: push to main → tests + Pages deploy; **hourly cron** (`23 * * * *`; GitHub cron is best-effort — 30–90 min delays/skips observed, hence hourly) / manual dispatch → refresh results.json, commit if changed, tests + deploy. Scheduled/manual deploys stamp `checked_at` into the DEPLOYED results.json only (committed file keeps `fetched_at` = last actual score change; no churn commits) — the status line shows "last new result … · checked …". Single workflow on purpose: GITHUB_TOKEN pushes don't trigger other workflows. |
 
@@ -222,22 +222,27 @@ no-results baseline.)
   is the **multiclass Brier** (scikit-learn's definition): per match, sum the squared error
   over its classes, then average over matches — range **[0, 2]**, lower is better. It also
   returns the **no-skill baseline** (`brierBaseline`, a uniform `1/nClasses` forecast → 2/3
-  per group game, 1/2 per knockout) and a layperson-friendly pair: `avgProbActual` (mean
-  probability the model gave the result that actually happened) vs `baselineProbActual`
-  (1/nClasses). The **reliability diagram** pools per-class `{p, o}` points (standard
-  multiclass calibration curve) into `binMode` `"count"` (equal-count quantile bins,
-  default — even sample size and even Wilson widths) or `"width"` (`CALIB_BINS`, ten
-  equal-width buckets); per bin `{n, meanPred, obsFreq, wilson*}`. `byCategory` carries the
-  group/knockout split; `points` are returned so the UI re-bins without recompute.
+  per group game, 1/2 per knockout) so the table can set our model's Brier against a random
+  guess's. The **reliability diagram** pools per-class `{p, o}` points (standard multiclass
+  calibration curve) into fixed even-width buckets (`opts.binEdges`, default `CALIB_BINS` =
+  ten 10-point buckets); per bin `{lo, hi, n, meanPred, obsFreq, wilson*}`. `byCategory`
+  carries the group/knockout split and per-category `{brier, brierBaseline, count}`; `points`
+  are returned so the UI can re-bin without recompute. The UI (`reliabilityDiagram` in views.js,
+  a slightly-wider-than-tall chart whose x-axis is split into the ten bins) draws the model's
+  prediction as a grey dashed staircase (one full-bin-width step at `meanPred` per bin) and what
+  actually happened as an inset green bar at `obsFreq` with a translucent green 95% Wilson
+  whisker (`wilson*`) for the bin's uncertainty — green on the step = well-calibrated, a long
+  whisker = thin data. `n` is in the per-bin tooltip. A title and legend sit above/below the
+  diagram; the per-category table shows the Brier score for "Our model" next to "Random guess"
+  (`brier` vs `brierBaseline`).
 - **Honors the time machine implicitly**: app.js recomputes `S.matchCalibration` from the
   (asOf-filtered) `S.results` on every results/time-machine change — synchronous, no worker,
   no replay (the model is static given ratings). Wound back, fewer matches are graded.
-- **Reader-facing framing** (tab headline + "How this works" dialog): lead with the
-  reliability diagram, then one plain line under it — "the win/draw/loss calls were X% better
-  than a random guess", where X = relative gain of `avgProbActual` over `baselineProbActual`
-  (handles worse/about-even too); Brier lives only in the per-category table and caveats.
-  One tournament with correlated outcomes, so descriptive not a verdict; football is
-  high-variance (perfect is unreachable); model is rating-only; knockout draws folded into W/L.
+- **Reader-facing framing** (tab headline + "How this works" dialog): the reliability diagram
+  leads, the per-category Brier table (our model vs a random guess) sits under it, and the
+  details/caveats explain both. One tournament with correlated outcomes, so descriptive not a
+  verdict; football is high-variance (perfect is unreachable); model is rating-only; knockout
+  draws folded into W/L.
 
 ## The time-machine (in `site/js/sim-core.js` `resultsAsOf`; header picker)
 

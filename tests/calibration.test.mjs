@@ -106,7 +106,6 @@ test("multiclass Brier hits its [0,2] bounds for confident forecasts", () => {
   };
   const right = analyzeMatchCalibration(mini, { group_results: { "A|B": [3, 0] }, knockout: {} });
   assert.ok(right.brier < 0.05, "confident and correct -> near 0");
-  assert.ok(right.avgProbActual > 0.9);
   const wrong = analyzeMatchCalibration(mini, { group_results: { "A|B": [0, 3] }, knockout: {} });
   assert.ok(wrong.brier > 1.7, "confident and wrong -> near 2");
 });
@@ -116,15 +115,6 @@ test("no-skill baseline: 2/3 per group game, 1/2 per knockout", () => {
   assert.ok(Math.abs(cal.byCategory.group.brierBaseline - 2 / 3) < 1e-12);
   assert.ok(Math.abs(cal.byCategory.ko.brierBaseline - 1 / 2) < 1e-12);
   assert.ok(Math.abs(cal.brierBaseline - (2 / 3 + 2 / 3 + 1 / 2) / 3) < 1e-12);
-  // baselineProbActual is the average 1/nClasses given to the actual result.
-  assert.ok(Math.abs(cal.baselineProbActual - (1 / 3 + 1 / 3 + 1 / 2) / 3) < 1e-12);
-});
-
-test("avgProbActual averages the probability placed on the realized result", () => {
-  const cal = analyzeMatchCalibration(prep, fixtureResults());
-  const expected = (wdl(g1.a, g1.b, false).pWin + wdl(g2.a, g2.b, false).pDraw
-    + wdl(g1.a, g1.b, true).pWin) / 3;
-  assert.ok(Math.abs(cal.avgProbActual - expected) < 1e-12);
 });
 
 test("ignores unplayed / undecided matches, and handles empty", () => {
@@ -139,7 +129,9 @@ test("ignores unplayed / undecided matches, and handles empty", () => {
   const empty = analyzeMatchCalibration(prep, { group_results: {}, knockout: {} });
   assert.equal(empty.nMatches, 0);
   assert.equal(empty.brier, null);
-  assert.deepEqual(empty.bins, []);
+  // Fixed-width bins always return the full set of buckets, all empty.
+  assert.equal(empty.bins.length, CALIB_BINS.length - 1);
+  assert.ok(empty.bins.every((b) => b.n === 0 && b.obsFreq === null));
 });
 
 // --- binning -----------------------------------------------------------------
@@ -151,21 +143,14 @@ function manyResults() {
   return { group_results, knockout: {} };
 }
 
-test("equal-count bins (default) partition the points with near-equal sizes", () => {
+test("bins are fixed even-width buckets on CALIB_BINS by default", () => {
   const cal = analyzeMatchCalibration(prep, manyResults());
-  assert.equal(cal.binMode, "count");
-  assert.equal(cal.bins.reduce((s, b) => s + b.n, 0), cal.points.length);
-  const sizes = cal.bins.map((b) => b.n);
-  assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, "bin sizes differ by at most 1");
-  for (let i = 1; i < cal.bins.length; i++) assert.ok(cal.bins[i].lo >= cal.bins[i - 1].lo);
-});
-
-test("even-width bins partition on CALIB_BINS", () => {
-  const cal = analyzeMatchCalibration(prep, manyResults(), { binMode: "width" });
-  assert.equal(cal.binMode, "width");
   assert.equal(cal.bins.length, CALIB_BINS.length - 1);
   assert.equal(cal.bins.reduce((s, b) => s + b.n, 0), cal.points.length);
-  for (const b of cal.bins) {
+  for (let i = 0; i < cal.bins.length; i++) {
+    assert.equal(cal.bins[i].lo, CALIB_BINS[i]);
+    assert.equal(cal.bins[i].hi, CALIB_BINS[i + 1]);
+    const b = cal.bins[i];
     const inBin = cal.points.filter((p) => p.p >= b.lo && (b.hi === 1 ? p.p <= 1 : p.p < b.hi));
     assert.equal(b.n, inBin.length);
     if (b.n) {
@@ -174,5 +159,16 @@ test("even-width bins partition on CALIB_BINS", () => {
     } else {
       assert.equal(b.obsFreq, null);
     }
+  }
+});
+
+test("custom bin edges (opts.binEdges) override the defaults", () => {
+  const edges = [0, 0.2, 0.5, 1];
+  const cal = analyzeMatchCalibration(prep, manyResults(), { binEdges: edges });
+  assert.equal(cal.bins.length, edges.length - 1);
+  assert.equal(cal.bins.reduce((s, b) => s + b.n, 0), cal.points.length);
+  for (let i = 0; i < cal.bins.length; i++) {
+    assert.equal(cal.bins[i].lo, edges[i]);
+    assert.equal(cal.bins[i].hi, edges[i + 1]);
   }
 });

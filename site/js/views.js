@@ -885,34 +885,40 @@ export function renderProbs(S, el) {
 // Accuracy (reliability of the per-match W/D/L model)
 // ---------------------------------------------------------------------------
 
-// Reliability diagram as inline SVG: each non-empty bin is a dot at (mean
-// predicted probability, observed frequency), sized by how many forecasts it
-// holds, with a 95% Wilson whisker. A well-calibrated model hugs the diagonal.
+// Reliability diagram as inline SVG. The model's win/draw/loss probabilities
+// are pooled into the ten fixed 10-point buckets the x-axis is divided into.
+// The model's predicted chance is a grey dashed staircase: one full-bin-width
+// step at the average probability it gave in that bin. A green bar marks what
+// actually happened, so a green bar sitting on the step is well-calibrated and
+// one above/below it is a miss. Hover a bin for the call count behind it.
 function reliabilityDiagram(bins) {
-  const W = 300, H = 300, pad = 38;
+  const W = 420, H = 300, pad = 38;
   const X = (v) => pad + v * (W - 2 * pad);
   const Y = (v) => H - pad - v * (H - 2 * pad);
-  const pts = bins.filter((b) => b.meanPred != null);
-  const maxN = Math.max(1, ...pts.map((b) => b.n));
-  const dot = (b) => {
-    const r = 3 + 5 * Math.sqrt(b.n / maxN), cx = X(b.meanPred);
+  const pts = bins.filter((b) => b.obsFreq != null);
+  const mark = (b) => {
+    const x0 = X(b.lo), x1 = X(b.hi), inset = (x1 - x0) * 0.2, cx = (x0 + x1) / 2;
+    const yp = Y(b.meanPred), yo = Y(b.obsFreq);
+    const step = `<line x1="${x0.toFixed(1)}" y1="${yp.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${yp.toFixed(1)}" class="calib-step"/>`;
     const whisker = b.wilsonLo != null
-      ? `<line x1="${cx}" y1="${Y(b.wilsonLo)}" x2="${cx}" y2="${Y(b.wilsonHi)}" class="calib-whisker"/>`
+      ? `<line x1="${cx.toFixed(1)}" y1="${Y(b.wilsonLo).toFixed(1)}" x2="${cx.toFixed(1)}" y2="${Y(b.wilsonHi).toFixed(1)}" class="calib-whisker"/>`
       : "";
-    return `${whisker}<circle cx="${cx}" cy="${Y(b.obsFreq)}" r="${r.toFixed(1)}" class="calib-dot"><title>predicted ~${pct(b.meanPred)}, happened ${pct(b.obsFreq)} (n=${b.n})</title></circle>`;
+    const band = `<line x1="${(x0 + inset).toFixed(1)}" y1="${yo.toFixed(1)}" x2="${(x1 - inset).toFixed(1)}" y2="${yo.toFixed(1)}" class="calib-band"/>`;
+    return `<title>Predicted ${pct(b.lo)}–${pct(b.hi)} (model averaged ${pct(b.meanPred)} over ${b.n} call${b.n === 1 ? "" : "s"}): actually happened ${pct(b.obsFreq)} of the time.</title>${step}${whisker}${band}`;
   };
-  const ticks = [0, 0.25, 0.5, 0.75, 1];
+  const xTicks = Array.from({ length: 11 }, (_, i) => i / 10);
+  const yTicks = [0, 0.25, 0.5, 0.75, 1];
   return `
     <svg class="calib-svg" viewBox="0 0 ${W} ${H}" role="img"
          aria-label="Reliability diagram: predicted probability versus observed frequency">
-      ${ticks.map((v) => `
+      ${xTicks.map((v) => `
         <line x1="${X(v)}" y1="${Y(0)}" x2="${X(v)}" y2="${Y(1)}" class="calib-grid"/>
+        <text x="${X(v)}" y="${Y(0) + 15}" class="calib-axis" text-anchor="middle">${Math.round(v * 100)}</text>`).join("")}
+      ${yTicks.map((v) => `
         <line x1="${X(0)}" y1="${Y(v)}" x2="${X(1)}" y2="${Y(v)}" class="calib-grid"/>
-        <text x="${X(v)}" y="${Y(0) + 15}" class="calib-axis" text-anchor="middle">${Math.round(v * 100)}</text>
         <text x="${X(0) - 7}" y="${Y(v) + 3}" class="calib-axis" text-anchor="end">${Math.round(v * 100)}</text>`).join("")}
-      <line x1="${X(0)}" y1="${Y(0)}" x2="${X(1)}" y2="${Y(1)}" class="calib-diag"/>
-      ${pts.map(dot).join("")}
-      <text x="${X(0.5)}" y="${H - 3}" class="calib-axis" text-anchor="middle">predicted %</text>
+      ${pts.map((b) => `<g class="calib-mark">${mark(b)}</g>`).join("")}
+      <text x="${X(0.5)}" y="${H - 3}" class="calib-axis" text-anchor="middle">predicted % (binned)</text>
       <text x="11" y="${Y(0.5)}" class="calib-axis" text-anchor="middle" transform="rotate(-90 11 ${Y(0.5)})">observed %</text>
     </svg>`;
 }
@@ -936,19 +942,9 @@ export function renderAccuracy(S, el) {
   }
 
   const g = cal.byCategory.group, k = cal.byCategory.ko;
-  const nGames = `${cal.nMatches} match${cal.nMatches === 1 ? "" : "es"}`;
-  // "% better than a random guess": how much more probability the model put on
-  // the result that actually happened than a no-skill (uniform) guess would.
-  const gain = cal.baselineProbActual > 0
-    ? (cal.avgProbActual - cal.baselineProbActual) / cal.baselineProbActual : 0;
-  const skillPct = Math.round(Math.abs(gain) * 100);
-  const skillLine = gain > 0.005
-    ? `Across ${nGames} so far, the model's win/draw/loss calls were <strong>${skillPct}% better</strong> than a random guess.`
-    : gain < -0.005
-    ? `Across ${nGames} so far, the model's win/draw/loss calls were <strong>${skillPct}% worse</strong> than a random guess.`
-    : `Across ${nGames} so far, the model's win/draw/loss calls were about as good as a random guess.`;
   const catRow = (label, c) => c.count
-    ? `<tr><td>${label}</td><td>${c.count}</td><td>${c.brier.toFixed(3)}</td><td class="muted">${c.brierBaseline.toFixed(3)}</td></tr>`
+    ? `<tr><td>${label}</td><td>${c.count}</td>
+        <td class="grp">${c.brier.toFixed(3)}</td><td class="muted">${c.brierBaseline.toFixed(3)}</td></tr>`
     : "";
 
   el.innerHTML = `
@@ -960,20 +956,24 @@ export function renderAccuracy(S, el) {
     </div>
 
     <div class="card calib">
-      <div class="calib-head">
-        <div class="muted small">Reliability: of all the calls near a given probability, about
-        that share should come true — so the dots should hug the diagonal.</div>
-        <div class="calib-bins">
-          <button class="btn small ${cal.binMode !== "width" ? "active" : ""}" data-calib-bins="count">Equal count</button>
-          <button class="btn small ${cal.binMode === "width" ? "active" : ""}" data-calib-bins="width">Even width</button>
-        </div>
-      </div>
+      <h3 class="calib-title">Predicted chance vs. how often it happened</h3>
       ${reliabilityDiagram(cal.bins)}
-      <p class="calib-skill">${skillLine}</p>
+      <div class="calib-legend muted small">
+        <span><i class="sw-step"></i> Average predicted chance</span>
+        <span><i class="sw-band"></i> How often it came true</span>
+        <span><i class="sw-whisker"></i> 95% range</span>
+      </div>
       <table class="calib-cat">
-        <tr><th>Category</th><th>Matches</th><th>Brier</th><th>No-skill</th></tr>
-        ${catRow("Group games (W/D/L)", g)}
-        ${catRow("Knockout games (W/L)", k)}
+        <colgroup><col class="c-cat"><col class="c-n"><col class="c-m"><col class="c-r"></colgroup>
+        <thead>
+          <tr><th rowspan="2">Category</th><th rowspan="2">Matches</th>
+            <th colspan="2" class="grp">Brier score (lower is better)</th></tr>
+          <tr><th class="grp">Our model</th><th>Random guess</th></tr>
+        </thead>
+        <tbody>
+          ${catRow("Group games (W/D/L)", g)}
+          ${catRow("Knockout games (W/L)", k)}
+        </tbody>
       </table>
     </div>
 
@@ -981,19 +981,22 @@ export function renderAccuracy(S, el) {
       <details>
         <summary class="muted">How to read this, and the caveats</summary>
         <ul class="muted small caveats">
-          <li><strong>Brier score</strong> is the multiclass version (scikit-learn's): for each
-          match, square the gap between the predicted probability and the outcome (1 or 0) of
-          every result, and sum over win/draw/loss. Range 0–2, lower is better; a no-skill
-          guess (every result equally likely) scores 2/3 for group games and 1/2 for knockouts.</li>
-          <li>The reliability dots pool every win/draw/loss prediction: each dot is the average
-          predicted probability in its bin (x) versus the fraction that actually happened (y);
-          dot size is the sample count and the whisker is a 95% Wilson interval. Equal-count
-          bins keep those whiskers evenly sized.</li>
-          <li>This is <strong>one tournament</strong>, and outcomes within it are correlated, so
-          read it as descriptive, not a verdict — and football is high-variance, so even a great
-          model lands well short of "perfect".</li>
-          <li>The model is rating-only (no form, injuries, or host advantage), and knockout
-          draws are folded into win/loss by the extra-time/penalties proxy.</li>
+          <li><strong>Reading the chart.</strong> Calls are grouped into ten 10-point bins by the
+          chance the model gave them. In each bin the grey dashed step is the model's average
+          predicted chance for those calls, and the green bar is how often they actually came true.
+          Green on the step means well-calibrated; above or below is a miss.</li>
+          <li><strong>The whisker</strong> is a 95% range for where the true rate likely sits. It's
+          wide when only a few matches fell in the bin, so don't read much into a green bar off the
+          step if its whisker is long. Hover a bin for the exact count.</li>
+          <li><strong>Brier score</strong> (in the table) grades the predictions: per match,
+          square the gap between each predicted probability and its 0/1 outcome, and sum over
+          win/draw/loss. Range 0–2, lower is better. The table sets our model's Brier against a
+          random guess (every result equally likely), which scores 2/3 for group games and 1/2
+          for knockouts — beating it means the model adds skill.</li>
+          <li><strong>Caveats.</strong> One tournament, with correlated outcomes, so this is
+          descriptive, not a verdict; football is high-variance, so even a great model falls short
+          of "perfect". The model is rating-only (no form, injuries, or host advantage), and
+          knockout draws are folded into win/loss by the extra-time/penalties proxy.</li>
         </ul>
       </details>
     </div>`;

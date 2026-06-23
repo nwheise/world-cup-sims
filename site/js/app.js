@@ -36,7 +36,6 @@ const S = {
   allMatches: [], ko: [], koById: new Map(), groupById: new Map(),
   koKnown: {}, playedCount: 0, ratings: {}, standings: {},
   matchCalibration: null,                    // per-match W/D/L accuracy (📈 tab)
-  calibBinMode: "count",                      // reliability-diagram bins: count | width
   probs: null, groupProbs: null, meta: { nSims: 0, seed: 42 },
   simStatus: { state: "running", done: 0, total: 0 },
   analysis: null,
@@ -171,7 +170,7 @@ function applyDerivedResults(cutoff) {
   computeStandings();
   // Per-match W/D/L accuracy is rating-only and independent of the Monte Carlo,
   // so grade it right here against the (time-machine-filtered) results.
-  S.matchCalibration = analyzeMatchCalibration(S.prep, S.results, { binMode: S.calibBinMode });
+  S.matchCalibration = analyzeMatchCalibration(S.prep, S.results);
 }
 
 /** (Re)build the two cascading <select>s to reflect S.asOf. */
@@ -333,14 +332,9 @@ function onAttendedChanged() {
 
 function wireEvents() {
   document.addEventListener("click", (ev) => {
-    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-ics],[data-ics-tier],[data-info],[data-info-close],[data-tm],[data-tm-close],[data-asof-now],[data-calib-bins]");
+    const t = ev.target.closest("[data-tab],[data-goto],[data-pick],[data-tie],[data-skip],[data-undo],[data-reset-prefs],[data-clear-attended],[data-cheer-sort],[data-pin],[data-sel-team],[data-fan-team],[data-path-sort],[data-ics],[data-ics-tier],[data-info],[data-info-close],[data-tm],[data-tm-close],[data-asof-now]");
     if (!t) return;
     if (t.dataset.tab) setTab(t.dataset.tab);
-    else if (t.dataset.calibBins) {
-      S.calibBinMode = t.dataset.calibBins;
-      applyDerivedResults(S.asOf);   // recompute bins under the new scheme
-      renderAccuracy(S, sections.accuracy);
-    }
     else if (t.dataset.asofNow !== undefined) setAsOf(null);
     else if (t.dataset.goto) setTab(t.dataset.goto);
     else if (t.dataset.pick) {

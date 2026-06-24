@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-06-23T22:42:02Z",
+ "fetched_at": "2026-06-24T04:43:09Z",
  "group_results": {
   "Argentina|Algeria": [
    3,
@@ -39,6 +39,10 @@
   ],
   "Canada|Qatar": [
    6,
+   0
+  ],
+  "Colombia|DR Congo": [
+   1,
    0
   ],
   "Cote d'Ivoire|Ecuador": [
@@ -120,6 +124,10 @@
   "Norway|Senegal": [
    3,
    2
+  ],
+  "Panama|Croatia": [
+   0,
+   1
   ],
   "Portugal|DR Congo": [
    1,

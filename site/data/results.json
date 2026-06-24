@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-06-24T04:43:09Z",
+ "fetched_at": "2026-06-24T21:25:29Z",
  "group_results": {
   "Argentina|Algeria": [
    3,
@@ -24,6 +24,10 @@
   "Belgium|Iran": [
    0,
    0
+  ],
+  "Bosnia-Herzegovina|Qatar": [
+   3,
+   1
   ],
   "Brazil|Haiti": [
    3,
@@ -167,6 +171,10 @@
   ],
   "Switzerland|Bosnia-Herzegovina": [
    4,
+   1
+  ],
+  "Switzerland|Canada": [
+   2,
    1
   ],
   "Tunisia|Japan": [

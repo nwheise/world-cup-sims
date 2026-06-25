@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-06-25T04:38:23Z",
+ "fetched_at": "2026-06-25T22:52:53Z",
  "group_results": {
   "Argentina|Algeria": [
    3,
@@ -53,6 +53,10 @@
    1,
    0
   ],
+  "Curacao|Cote d'Ivoire": [
+   0,
+   2
+  ],
   "Czechia|Mexico": [
    0,
    3
@@ -64,6 +68,10 @@
   "Ecuador|Curacao": [
    0,
    0
+  ],
+  "Ecuador|Germany": [
+   2,
+   1
   ],
   "England|Croatia": [
    4,

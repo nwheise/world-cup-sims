@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-06-26T01:33:23Z",
+ "fetched_at": "2026-06-26T06:31:42Z",
  "group_results": {
   "Argentina|Algeria": [
    3,
@@ -153,6 +153,10 @@
    0,
    1
   ],
+  "Paraguay|Australia": [
+   0,
+   0
+  ],
   "Portugal|DR Congo": [
    1,
    1
@@ -216,6 +220,10 @@
   "Turkiye|Paraguay": [
    0,
    1
+  ],
+  "Turkiye|USA": [
+   3,
+   2
   ],
   "USA|Australia": [
    2,

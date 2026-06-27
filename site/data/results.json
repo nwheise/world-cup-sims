@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-06-26T22:39:11Z",
+ "fetched_at": "2026-06-27T04:50:46Z",
  "group_results": {
   "Argentina|Algeria": [
    3,
@@ -36,6 +36,10 @@
   "Brazil|Morocco": [
    1,
    1
+  ],
+  "Cabo Verde|Saudi Arabia": [
+   0,
+   0
   ],
   "Canada|Bosnia-Herzegovina": [
    1,
@@ -245,6 +249,10 @@
    2,
    2
   ],
+  "Uruguay|Spain": [
+   0,
+   1
+  ],
   "Uzbekistan|Colombia": [
    1,
    3
@@ -255,6 +263,10 @@
    "team1": "South Africa",
    "team2": "Canada"
   },
+  "m74": {
+   "team1": "Germany",
+   "team2": "Paraguay"
+  },
   "m75": {
    "team1": "Netherlands",
    "team2": "Morocco"
@@ -263,6 +275,10 @@
    "team1": "Brazil",
    "team2": "Japan"
   },
+  "m77": {
+   "team1": "France",
+   "team2": "Sweden"
+  },
   "m78": {
    "team1": "Cote d'Ivoire",
    "team2": "Norway"
@@ -270,6 +286,10 @@
   "m81": {
    "team1": "USA",
    "team2": "Bosnia-Herzegovina"
+  },
+  "m86": {
+   "team1": "Argentina",
+   "team2": "Cabo Verde"
   }
  },
  "source": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719&limit=200"

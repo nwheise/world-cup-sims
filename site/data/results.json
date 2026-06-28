@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-06-28T05:58:30Z",
+ "fetched_at": "2026-06-28T21:32:55Z",
  "group_results": {
   "Algeria|Austria": [
    3,
@@ -292,8 +292,13 @@
  },
  "knockout": {
   "m73": {
+   "score": [
+    0,
+    1
+   ],
    "team1": "South Africa",
-   "team2": "Canada"
+   "team2": "Canada",
+   "winner": "Canada"
   },
   "m74": {
    "team1": "Germany",

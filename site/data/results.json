@@ -1,6 +1,10 @@
 {
- "fetched_at": "2026-06-28T01:58:41Z",
+ "fetched_at": "2026-06-28T05:58:30Z",
  "group_results": {
+  "Algeria|Austria": [
+   3,
+   3
+  ],
   "Argentina|Algeria": [
    3,
    0
@@ -140,6 +144,10 @@
   "Jordan|Algeria": [
    1,
    2
+  ],
+  "Jordan|Argentina": [
+   1,
+   3
   ],
   "Mexico|South Africa": [
    2,
@@ -326,6 +334,14 @@
   "m83": {
    "team1": "Portugal",
    "team2": "Croatia"
+  },
+  "m84": {
+   "team1": "Spain",
+   "team2": "Austria"
+  },
+  "m85": {
+   "team1": "Switzerland",
+   "team2": "Algeria"
   },
   "m86": {
    "team1": "Argentina",

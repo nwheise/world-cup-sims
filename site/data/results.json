@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-06-28T01:31:08Z",
+ "fetched_at": "2026-06-28T01:58:41Z",
  "group_results": {
   "Argentina|Algeria": [
    3,
@@ -75,6 +75,10 @@
   ],
   "Czechia|South Africa": [
    1,
+   1
+  ],
+  "DR Congo|Uzbekistan": [
+   3,
    1
   ],
   "Ecuador|Curacao": [
@@ -307,13 +311,29 @@
    "team1": "Mexico",
    "team2": "Ecuador"
   },
+  "m80": {
+   "team1": "England",
+   "team2": "DR Congo"
+  },
   "m81": {
    "team1": "USA",
    "team2": "Bosnia-Herzegovina"
   },
+  "m82": {
+   "team1": "Belgium",
+   "team2": "Senegal"
+  },
+  "m83": {
+   "team1": "Portugal",
+   "team2": "Croatia"
+  },
   "m86": {
    "team1": "Argentina",
    "team2": "Cabo Verde"
+  },
+  "m87": {
+   "team1": "Colombia",
+   "team2": "Ghana"
   },
   "m88": {
    "team1": "Australia",

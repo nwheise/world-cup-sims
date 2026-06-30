@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-06-29T23:29:48Z",
+ "fetched_at": "2026-06-30T04:39:12Z",
  "group_results": {
   "Algeria|Austria": [
    3,
@@ -310,8 +310,13 @@
    "winner": "Paraguay"
   },
   "m75": {
+   "score": [
+    1,
+    1
+   ],
    "team1": "Netherlands",
-   "team2": "Morocco"
+   "team2": "Morocco",
+   "winner": "Morocco"
   },
   "m76": {
    "score": [
@@ -369,6 +374,10 @@
   "m88": {
    "team1": "Australia",
    "team2": "Egypt"
+  },
+  "m90": {
+   "team1": "Canada",
+   "team2": "Morocco"
   }
  },
  "source": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719&limit=200"

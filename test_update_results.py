@@ -101,7 +101,7 @@ class TestEspnResultsParser(unittest.TestCase):
     def test_one_unplaceable_game_does_not_discard_the_others(self):
         # A completed real matchup with a kickoff far from every scheduled
         # knockout slot can't be placed, but it must not abort the refresh — the
-        # other results still come through.
+        # other results still come through. (Partial feed -> nearest fallback.)
         good = self.event("2026-06-25T19:00Z", "Turkiye", "USA",
                           1, 2, completed=True)
         stray = self.event("2026-07-01T09:00Z", "Mexico", "Ecuador",
@@ -109,6 +109,21 @@ class TestEspnResultsParser(unittest.TestCase):
         g, k = self.upd.parse_espn([good, stray], self.tournament, min_events=0)
         self.assertEqual(set(next(iter(g)).split("|")), {"Turkiye", "USA"})
         self.assertEqual(k, {})
+
+    def test_assign_slots_aligns_order_under_a_session_wide_delay(self):
+        # Three slots 3.5h apart; a 2h delay to the whole session drifts each
+        # game toward the *next* slot's time, so a nearest-time match would
+        # scramble them. Order-preserving alignment (full feed) keeps them right.
+        assign = self.upd.assign_knockout_slots
+        base = 1_000_000.0
+        slots = [(base, 101), (base + 3.5 * 3600, 102), (base + 7 * 3600, 103)]
+        delayed = [base + 2 * 3600, base + 5.5 * 3600, base + 9 * 3600]
+        self.assertEqual(assign(delayed, slots), {0: 101, 1: 102, 2: 103})
+        # Given out of order, alignment still pairs by chronological rank.
+        self.assertEqual(assign(list(reversed(delayed)), slots),
+                         {0: 103, 1: 102, 2: 101})
+        # Partial feed (count mismatch) -> nearest-kickoff fallback.
+        self.assertEqual(assign([base + 600], slots), {0: 101})
 
     def test_event_count_guard_raises(self):
         with self.assertRaises(ValueError):

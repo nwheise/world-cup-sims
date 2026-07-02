@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-07-01T01:35:44Z",
+ "fetched_at": "2026-07-02T16:05:28Z",
  "group_results": {
   "Algeria|Austria": [
    3,
@@ -345,17 +345,41 @@
    "team2": "Norway",
    "winner": "Norway"
   },
+  "m79": {
+   "score": [
+    2,
+    0
+   ],
+   "team1": "Mexico",
+   "team2": "Ecuador",
+   "winner": "Mexico"
+  },
   "m80": {
+   "score": [
+    2,
+    1
+   ],
    "team1": "England",
-   "team2": "DR Congo"
+   "team2": "DR Congo",
+   "winner": "England"
   },
   "m81": {
+   "score": [
+    2,
+    0
+   ],
    "team1": "USA",
-   "team2": "Bosnia-Herzegovina"
+   "team2": "Bosnia-Herzegovina",
+   "winner": "USA"
   },
   "m82": {
+   "score": [
+    3,
+    2
+   ],
    "team1": "Belgium",
-   "team2": "Senegal"
+   "team2": "Senegal",
+   "winner": "Belgium"
   },
   "m83": {
    "team1": "Portugal",
@@ -392,6 +416,14 @@
   "m91": {
    "team1": "Brazil",
    "team2": "Norway"
+  },
+  "m92": {
+   "team1": "Mexico",
+   "team2": "England"
+  },
+  "m94": {
+   "team1": "USA",
+   "team2": "Belgium"
   }
  },
  "source": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719&limit=200"

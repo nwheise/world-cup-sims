@@ -85,6 +85,31 @@ class TestEspnResultsParser(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.upd.parse_espn([ev], self.tournament, min_events=0)
 
+    def test_knockout_kickoff_drift_is_still_a_knockout_not_a_group_game(self):
+        # Regression: M79 (Mexico City) is scheduled 2026-06-30T19:00-06:00 ==
+        # 2026-07-01T01:00Z. Mexico (Group A) vs Ecuador (Group E) is a real
+        # R32 matchup, not a group pair. When ESPN's kickoff drifts an hour off
+        # the schedule, the pair is still classified as a knockout game (it used
+        # to be misread as an unknown group game and abort the whole update).
+        ev = self.event("2026-07-01T02:00Z", "Mexico", "Ecuador",
+                        2, 1, completed=True, winner="home")
+        g, k = self.upd.parse_espn([ev], self.tournament, min_events=0)
+        self.assertEqual(g, {})
+        self.assertEqual(k, {"m79": {"team1": "Mexico", "team2": "Ecuador",
+                                     "score": [2, 1], "winner": "Mexico"}})
+
+    def test_one_unplaceable_game_does_not_discard_the_others(self):
+        # A completed real matchup with a kickoff far from every scheduled
+        # knockout slot can't be placed, but it must not abort the refresh — the
+        # other results still come through.
+        good = self.event("2026-06-25T19:00Z", "Turkiye", "USA",
+                          1, 2, completed=True)
+        stray = self.event("2026-07-01T09:00Z", "Mexico", "Ecuador",
+                           2, 1, completed=True, winner="home")
+        g, k = self.upd.parse_espn([good, stray], self.tournament, min_events=0)
+        self.assertEqual(set(next(iter(g)).split("|")), {"Turkiye", "USA"})
+        self.assertEqual(k, {})
+
     def test_event_count_guard_raises(self):
         with self.assertRaises(ValueError):
             self.upd.parse_espn([], self.tournament)

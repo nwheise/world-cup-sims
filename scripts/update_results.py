@@ -24,10 +24,12 @@ Output schema (everything in simulator team names):
 
 Group ids match tournament.json's group_games ids (canonical "TeamA|TeamB" in
 the schedule's listed order; flipped automatically if the source lists the
-pair the other way around). Knockout events are identified by their UTC
-kickoff instant — unique per knockout match in the official schedule — and the
-winner comes from ESPN's explicit per-competitor flag (correct through extra
-time and penalties).
+pair the other way around). Group vs knockout is decided by the team pair, not
+the kickoff time: a pair that forms a real group fixture is a group game, any
+other pair of real teams can only be meeting in the knockout stage. The
+knockout match number is then read off the nearest scheduled kickoff (they are
+>=3.5h apart, so kickoff drift can't confuse them). The winner comes from
+ESPN's explicit per-competitor flag (correct through extra time and penalties).
 
 Run from the repo root:  python3 scripts/update_results.py
 """
@@ -46,6 +48,11 @@ TOURNAMENT_PATH = os.path.join("site", "data", "tournament.json")
 # Tournament ends July 19, 2026. After a grace period, become a no-op so the
 # scheduled workflow stops churning commits.
 SHUTOFF = datetime.date(2026, 8, 1)
+
+# A knockout ESPN event is mapped to a match number by nearest scheduled
+# kickoff. Knockout matches are >=3.5h apart, and real kickoff drift is at most
+# ~1h, so the nearest scheduled kickoff within this window is unambiguous.
+KO_KICKOFF_TOLERANCE_S = 2 * 3600
 
 # ESPN team spellings -> the names used by the simulator / RATINGS.
 ESPN_NAME_MAP = {
@@ -73,16 +80,29 @@ def iso_to_utc_ts(iso):
 # ESPN (primary)
 # ---------------------------------------------------------------------------
 
+def nearest_knockout(ts, ko_matches, tol=KO_KICKOFF_TOLERANCE_S):
+    """Given an event kickoff `ts` and a list of (kickoff_ts, num) knockout
+    matches, return the num of the nearest one within `tol` seconds, else None."""
+    best_num, best_gap = None, None
+    for k_ts, num in ko_matches:
+        gap = abs(k_ts - ts)
+        if best_gap is None or gap < best_gap:
+            best_gap, best_num = gap, num
+    return best_num if best_gap is not None and best_gap <= tol else None
+
+
 def parse_espn(events, tournament, min_events=90):
     """Pure parser: ESPN scoreboard events -> (group_results, knockout).
-    Raises on structural surprises so the caller can fall back."""
+    Raises only when a completed game looks like a group fixture with an
+    unmapped team name (a real config bug worth surfacing); everything else is
+    skipped so one odd event can't discard a whole refresh."""
     if len(events) < min_events:   # the full tournament is 104 events
         raise ValueError(f"ESPN returned only {len(events)} events")
 
     valid_group_ids = {g["id"] for g in tournament["group_games"]}
     known_teams = set(tournament["ratings"])
-    ko_num_by_ts = {iso_to_utc_ts(m["kickoff"]): m["num"]
-                    for m in tournament["knockout"]}
+    ko_matches = [(iso_to_utc_ts(m["kickoff"]), m["num"])
+                  for m in tournament["knockout"]]
 
     group_results, knockout = {}, {}
     for ev in events:
@@ -93,10 +113,32 @@ def parse_espn(events, tournament, min_events=90):
         t2 = ESPN_NAME_MAP.get(away["team"]["displayName"], away["team"]["displayName"])
         both_real = t1 in known_teams and t2 in known_teams
         completed = bool(comp["status"]["type"].get("completed"))
-        ko_num = ko_num_by_ts.get(iso_to_utc_ts(ev["date"]))
+
+        # Classify by the team pair, not the kickoff time. Two teams that form a
+        # real group fixture are a group game; any other pair of real teams can
+        # only meet in the knockout stage. (Kickoff times drift from the
+        # published schedule, so a drifted knockout kickoff must not be misread
+        # as a bogus group game — that used to abort the entire update.)
+        if f"{t1}|{t2}" in valid_group_ids:
+            gid, sides = f"{t1}|{t2}", (home, away)
+        elif f"{t2}|{t1}" in valid_group_ids:
+            gid, sides = f"{t2}|{t1}", (away, home)
+        else:
+            gid, sides = None, None
+
+        if gid is not None:
+            # Group game: only completed ones matter (both teams known by
+            # construction of a valid group id).
+            if not completed:
+                continue
+            group_results[gid] = [int(sides[0]["score"]), int(sides[1]["score"])]
+            continue
+
+        # Not a group fixture. Find its knockout slot by nearest kickoff.
+        ko_num = nearest_knockout(iso_to_utc_ts(ev["date"]), ko_matches)
 
         if ko_num is not None:
-            # Knockout: record participants once real; winner once completed.
+            # Knockout slot: record participants once real; winner once completed.
             if not both_real:
                 continue   # still "Group A Winner" style placeholders
             entry = {"team1": t1, "team2": t2}
@@ -110,18 +152,21 @@ def parse_espn(events, tournament, min_events=90):
                     print(f"WARNING: completed knockout m{ko_num} has no winner"
                           f" flag — skipped winner", file=sys.stderr)
             knockout[f"m{ko_num}"] = entry
-        else:
-            # Group game: only completed ones matter.
-            if not completed:
-                continue
-            if not both_real:
-                raise ValueError(f"unmapped group team in {t1!r} vs {t2!r}")
-            gid, score = f"{t1}|{t2}", [int(home["score"]), int(away["score"])]
-            if gid not in valid_group_ids:
-                gid, score = f"{t2}|{t1}", [score[1], score[0]]
-            if gid not in valid_group_ids:
-                raise ValueError(f"unknown group game {t1} vs {t2}")
-            group_results[gid] = score
+            continue
+
+        # Neither a group fixture nor near any scheduled knockout slot.
+        if completed and both_real:
+            # Two real teams that aren't a group pair are a knockout game whose
+            # kickoff drifted too far to place. Skip it rather than abort the
+            # whole refresh; the next run retries.
+            print(f"WARNING: completed match {t1} vs {t2} at {ev['date']} is not"
+                  f" a group fixture and matched no knockout slot — skipped",
+                  file=sys.stderr)
+        elif completed and not both_real:
+            # A completed non-placeholder game with an unmapped team name is
+            # almost certainly a group game missing a name mapping — surface it.
+            raise ValueError(f"unmapped team in completed match {t1!r} vs {t2!r}")
+        # else: unplayed placeholder — ignore.
     return group_results, knockout
 
 

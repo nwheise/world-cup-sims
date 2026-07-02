@@ -35,7 +35,8 @@ self.onmessage = (ev) => {
     // forced by the results so far (the must-watch tab's "decided" signal).
     // Merge both-known forced matchups into fixed.koKnown so the cheer guide
     // and team path can bucket them; this never re-runs the sim (the store is
-    // already built and simulateTournament keys off koWinner, not koKnown).
+    // already built, and simulateTournament attributes recorded winners by
+    // participants, not by koKnown).
     const forced = forcedKnockout(prep, store);
     forced.forEach(([t1, t2], i) => {
       if (!fixed.koKnown[i] && t1 !== null && t2 !== null) fixed.koKnown[i] = [t1, t2];

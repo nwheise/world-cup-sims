@@ -136,12 +136,26 @@ export function prepare(tournament) {
   return { teams, ti, ratings, groupTeams, groupGames, gamesOfGroup, ko, annex };
 }
 
+/** Order-independent key for a pair of team indices (48 teams < 64). */
+function pairKey(a, b) {
+  return a < b ? a * 64 + b : b * 64 + a;
+}
+
 /**
  * Index results.json into fast lookups.
  * Returns { scores: Int16Array(144) (-1 = unplayed, else [2i]=ga,[2i+1]=gb),
- *           koWinner: Uint8Array(32) (team id or NONE),
+ *           koWinner: Uint8Array(32) (team id or NONE, keyed by slot/m-number),
+ *           koWinnerByParticipants: Map(pairKey -> winner id),
  *           koKnown:  Array(32) of [t1,t2] or null (real participants known),
  *           playedCount }
+ *
+ * A knockout result is attributed to a bracket slot by its PARTICIPANTS, not by
+ * its m-number: `koWinnerByParticipants` maps the (unordered) team pair to the
+ * winner, so a result whose m-number label is wrong (e.g. a kickoff change
+ * confused the live scraper's match id) still lands on the slot the bracket
+ * routes those two teams to. The per-slot `koWinner`/`koKnown` (by m-number)
+ * remain for the analysis/time-machine layers and as a fallback for a partial
+ * entry that names only the winner.
  */
 export function prepareResults(prep, results) {
   const scores = new Int16Array(prep.groupGames.length * 2).fill(-1);
@@ -156,15 +170,23 @@ export function prepareResults(prep, results) {
   }
   const koWinner = new Uint8Array(prep.ko.length).fill(NONE);
   const koKnown = prep.ko.map(() => null);
+  const koWinnerByParticipants = new Map();
   for (const [id, entry] of Object.entries(results?.knockout || {})) {
-    const i = prep.ko.findIndex((m) => m.id === id);
-    if (i < 0) continue;
     const t1 = prep.ti.get(entry.team1), t2 = prep.ti.get(entry.team2);
-    if (t1 !== undefined && t2 !== undefined) koKnown[i] = [t1, t2];
     const w = prep.ti.get(entry.winner);
-    if (w !== undefined) koWinner[i] = w;
+    const i = prep.ko.findIndex((m) => m.id === id);
+    if (i >= 0) {
+      if (t1 !== undefined && t2 !== undefined) koKnown[i] = [t1, t2];
+      if (w !== undefined) koWinner[i] = w;
+    }
+    // Participant-keyed: only when both teams are real and the winner is one of
+    // them (always true for the live feed). This is the attribution the sim
+    // trusts, so a mislabeled m-number can't misplace or drop a real result.
+    if (t1 !== undefined && t2 !== undefined && (w === t1 || w === t2)) {
+      koWinnerByParticipants.set(pairKey(t1, t2), w);
+    }
   }
-  return { scores, koWinner, koKnown, playedCount };
+  return { scores, koWinner, koWinnerByParticipants, koKnown, playedCount };
 }
 
 /**
@@ -307,7 +329,12 @@ export function simulateTournament(prep, fixed, rnd, store, s) {
       return thirds[GROUP_LETTERS.indexOf(assign[String(m.num)])];
     };
     const t1 = resolve(m.slot1), t2 = resolve(m.slot2);
-    let w = fixed.koWinner[i];
+    // Attribute a recorded result by its participants first (m-number-proof),
+    // then fall back to the per-slot winner (honors a winner-only entry). Either
+    // way the result is applied only when it matches THIS sim's lineup — the
+    // guard against a stale/partial feed.
+    let w = fixed.koWinnerByParticipants.get(pairKey(t1, t2));
+    if (w === undefined) w = fixed.koWinner[i];
     if (w !== t1 && w !== t2) {        // unknown, or stale vs. simulated lineup
       const [ga, gb] = simulateMatch(ratings[t1], ratings[t2], true, rnd);
       w = ga > gb ? t1 : t2;

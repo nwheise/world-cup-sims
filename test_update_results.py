@@ -85,6 +85,62 @@ class TestEspnResultsParser(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.upd.parse_espn([ev], self.tournament, min_events=0)
 
+    def test_knockout_kickoff_drift_is_still_a_knockout_not_a_group_game(self):
+        # Regression: M79 (Mexico City) is scheduled 2026-06-30T19:00-06:00 ==
+        # 2026-07-01T01:00Z. Mexico (Group A) vs Ecuador (Group E) is a real
+        # R32 matchup, not a group pair. When ESPN's kickoff drifts an hour off
+        # the schedule, the pair is still classified as a knockout game (it used
+        # to be misread as an unknown group game and abort the whole update).
+        ev = self.event("2026-07-01T02:00Z", "Mexico", "Ecuador",
+                        2, 1, completed=True, winner="home")
+        g, k = self.upd.parse_espn([ev], self.tournament, min_events=0)
+        self.assertEqual(g, {})
+        self.assertEqual(k, {"m79": {"team1": "Mexico", "team2": "Ecuador",
+                                     "score": [2, 1], "winner": "Mexico"}})
+
+    def test_one_unplaceable_game_does_not_discard_the_others(self):
+        # A completed real matchup with a kickoff far from every scheduled
+        # knockout slot can't be placed, but it must not abort the refresh — the
+        # other results still come through. (Partial feed -> nearest fallback.)
+        good = self.event("2026-06-25T19:00Z", "Turkiye", "USA",
+                          1, 2, completed=True)
+        stray = self.event("2026-07-01T09:00Z", "Mexico", "Ecuador",
+                           2, 1, completed=True, winner="home")
+        g, k = self.upd.parse_espn([good, stray], self.tournament, min_events=0)
+        self.assertEqual(set(next(iter(g)).split("|")), {"Turkiye", "USA"})
+        self.assertEqual(k, {})
+
+    def test_same_group_knockout_rematch_is_not_read_as_the_group_game(self):
+        # Mexico and South Africa are both in Group A; two group-mates can meet
+        # again in a knockout (quarter-finals onward). The rematch shares the
+        # group game's team pair, so it must be told apart by time — it kicks off
+        # after the knockout stage begins — and recorded as a knockout game,
+        # leaving the group result intact rather than overwriting it.
+        group = self.event("2026-06-11T19:00Z", "Mexico", "South Africa",
+                           2, 0, completed=True)
+        # m97 (a quarter-final) kicks off 2026-07-09T16:00-04:00 == 20:00Z.
+        rematch = self.event("2026-07-09T20:00Z", "Mexico", "South Africa",
+                             1, 0, completed=True, winner="home")
+        g, k = self.upd.parse_espn([group, rematch], self.tournament, min_events=0)
+        self.assertEqual(g.get("Mexico|South Africa"), [2, 0])
+        self.assertEqual(k, {"m97": {"team1": "Mexico", "team2": "South Africa",
+                                     "score": [1, 0], "winner": "Mexico"}})
+
+    def test_assign_slots_aligns_order_under_a_session_wide_delay(self):
+        # Three slots 3.5h apart; a 2h delay to the whole session drifts each
+        # game toward the *next* slot's time, so a nearest-time match would
+        # scramble them. Order-preserving alignment (full feed) keeps them right.
+        assign = self.upd.assign_knockout_slots
+        base = 1_000_000.0
+        slots = [(base, 101), (base + 3.5 * 3600, 102), (base + 7 * 3600, 103)]
+        delayed = [base + 2 * 3600, base + 5.5 * 3600, base + 9 * 3600]
+        self.assertEqual(assign(delayed, slots), {0: 101, 1: 102, 2: 103})
+        # Given out of order, alignment still pairs by chronological rank.
+        self.assertEqual(assign(list(reversed(delayed)), slots),
+                         {0: 103, 1: 102, 2: 101})
+        # Partial feed (count mismatch) -> nearest-kickoff fallback.
+        self.assertEqual(assign([base + 600], slots), {0: 101})
+
     def test_event_count_guard_raises(self):
         with self.assertRaises(ValueError):
             self.upd.parse_espn([], self.tournament)

@@ -246,6 +246,44 @@ test("prepareResults: known knockout winner is honored when participants match",
   assert.equal(groupA.length, 4);
 });
 
+test("knockout result is attributed by participants, not its m-number label", () => {
+  // Pin every group so the whole R32 lineup is deterministic across sims.
+  const rnd = makeRng(77);
+  const fixedScores = {};
+  for (const g of prep.groupGames) {
+    const [ga, gb] = simulateMatch(prep.ratings[g.a], prep.ratings[g.b], false, rnd);
+    fixedScores[g.id] = [ga, gb];
+  }
+  // Read M79's forced participants from a knockout-free run.
+  const base = prepareResults(prep, { group_results: fixedScores, knockout: {} });
+  const bst = runSims(prep, base, 1, 5);
+  const i79 = 79 - 73;
+  const t1 = bst.koTeams[2 * i79], t2 = bst.koTeams[2 * i79 + 1];
+  const win = prep.teams[t1], other = prep.teams[t2];
+
+  // Record that exact matchup, but under the WRONG id (m80) — as a kickoff
+  // change could mislabel the scraper's match id. It must still land on M79.
+  const mislabeled = prepareResults(prep, {
+    group_results: fixedScores,
+    knockout: { m80: { team1: win, team2: other, winner: win } },
+  });
+  const st = runSims(prep, mislabeled, 200, 5);
+  for (let s = 0; s < 200; s++) {
+    assert.equal(st.koWin[s * 32 + i79], t1,
+      "M79 winner is honored at the right slot despite the m80 label");
+  }
+  // Identical to labeling it correctly as m79 — the m-number does not matter.
+  const correct = prepareResults(prep, {
+    group_results: fixedScores,
+    knockout: { m79: { team1: win, team2: other, winner: win } },
+  });
+  const cst = runSims(prep, correct, 200, 5);
+  for (let s = 0; s < 200; s++) {
+    assert.equal(st.koWin[s * 32 + i79], cst.koWin[s * 32 + i79],
+      "wrong-label and right-label give the same M79 attribution");
+  }
+});
+
 // --- preference math ----------------------------------------------------------------
 
 test("emphasize: anchored, convex", () => {

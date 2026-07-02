@@ -110,6 +110,22 @@ class TestEspnResultsParser(unittest.TestCase):
         self.assertEqual(set(next(iter(g)).split("|")), {"Turkiye", "USA"})
         self.assertEqual(k, {})
 
+    def test_same_group_knockout_rematch_is_not_read_as_the_group_game(self):
+        # Mexico and South Africa are both in Group A; two group-mates can meet
+        # again in a knockout (quarter-finals onward). The rematch shares the
+        # group game's team pair, so it must be told apart by time — it kicks off
+        # after the knockout stage begins — and recorded as a knockout game,
+        # leaving the group result intact rather than overwriting it.
+        group = self.event("2026-06-11T19:00Z", "Mexico", "South Africa",
+                           2, 0, completed=True)
+        # m97 (a quarter-final) kicks off 2026-07-09T16:00-04:00 == 20:00Z.
+        rematch = self.event("2026-07-09T20:00Z", "Mexico", "South Africa",
+                             1, 0, completed=True, winner="home")
+        g, k = self.upd.parse_espn([group, rematch], self.tournament, min_events=0)
+        self.assertEqual(g.get("Mexico|South Africa"), [2, 0])
+        self.assertEqual(k, {"m97": {"team1": "Mexico", "team2": "South Africa",
+                                     "score": [1, 0], "winner": "Mexico"}})
+
     def test_assign_slots_aligns_order_under_a_session_wide_delay(self):
         # Three slots 3.5h apart; a 2h delay to the whole session drifts each
         # game toward the *next* slot's time, so a nearest-time match would

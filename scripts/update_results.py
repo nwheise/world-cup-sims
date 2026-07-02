@@ -28,10 +28,13 @@ Group ids match tournament.json's group_games ids (canonical "TeamA|TeamB" in
 the schedule's listed order; flipped automatically if the source lists the
 pair the other way around). Group vs knockout is decided by the team pair, not
 the kickoff time: a pair that forms a real group fixture is a group game, any
-other pair of real teams can only be meeting in the knockout stage. The
-knockout match number is then read off the nearest scheduled kickoff (they are
->=3.5h apart, so kickoff drift can't confuse them). The winner comes from
-ESPN's explicit per-competitor flag (correct through extra time and penalties).
+other pair of real teams can only be meeting in the knockout stage. The one
+pair that is both — two group-mates who meet AGAIN in a knockout (possible from
+the quarter-finals on) — is told apart by time: the group game is always before
+the knockout stage begins, the rematch weeks after. The knockout match number
+is then assigned by aligning the (fixed-order) knockout schedule with the
+events chronologically, so a delayed kickoff can't mislabel a game. The winner
+comes from ESPN's explicit per-competitor flag (correct through ET and pens).
 
 Run from the repo root:  python3 scripts/update_results.py
 """
@@ -132,12 +135,21 @@ def parse_espn(events, tournament, min_events=90):
     known_teams = set(tournament["ratings"])
     ko_matches = [(iso_to_utc_ts(m["kickoff"]), m["num"])
                   for m in tournament["knockout"]]
+    ko_stage_start = min(k_ts for k_ts, _ in ko_matches)
 
     # Pass 1: split group games from knockout candidates by the team pair, not
     # the kickoff time. Two teams that form a real group fixture are a group
     # game; any other pair can only meet in the knockout stage. (Kickoff times
     # drift from the published schedule, so a drifted knockout kickoff must not
     # be misread as a bogus group game — that used to abort the entire update.)
+    #
+    # The one case where the pair alone is ambiguous: two group-mates can meet
+    # AGAIN in a knockout game (possible from the quarter-finals on — e.g. a
+    # group's winner and runner-up). That rematch has the same pair as their
+    # group game, so it's told apart by time: every group game kicks off before
+    # the knockout stage begins (a ~17h gap the schedule never closes, and a
+    # rematch is ~2 weeks later), so a valid-pair event at/after the knockout
+    # stage start is a rematch, handled as a knockout candidate below.
     group_results, candidates = {}, []
     for ev in events:
         comp = ev["competitions"][0]
@@ -146,6 +158,7 @@ def parse_espn(events, tournament, min_events=90):
         t1 = ESPN_NAME_MAP.get(home["team"]["displayName"], home["team"]["displayName"])
         t2 = ESPN_NAME_MAP.get(away["team"]["displayName"], away["team"]["displayName"])
         completed = bool(comp["status"]["type"].get("completed"))
+        ts = iso_to_utc_ts(ev["date"])
 
         if f"{t1}|{t2}" in valid_group_ids:
             gid, sides = f"{t1}|{t2}", (home, away)
@@ -154,7 +167,7 @@ def parse_espn(events, tournament, min_events=90):
         else:
             gid = None
 
-        if gid is not None:
+        if gid is not None and ts < ko_stage_start:
             # Group game: only completed ones matter (both teams known by
             # construction of a valid group id).
             if completed:
@@ -165,7 +178,7 @@ def parse_espn(events, tournament, min_events=90):
             "t1": t1, "t2": t2, "home": home, "away": away, "date": ev["date"],
             "both_real": t1 in known_teams and t2 in known_teams,
             "n_real": (t1 in known_teams) + (t2 in known_teams),
-            "completed": completed, "ts": iso_to_utc_ts(ev["date"]),
+            "completed": completed, "ts": ts,
         })
 
     # Pass 2: give each candidate its knockout match number, then record it.

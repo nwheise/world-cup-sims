@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-07-02T21:37:45Z",
+ "fetched_at": "2026-07-03T04:13:56Z",
  "group_results": {
   "Algeria|Austria": [
    3,
@@ -382,8 +382,13 @@
    "winner": "Belgium"
   },
   "m83": {
+   "score": [
+    2,
+    1
+   ],
    "team1": "Portugal",
-   "team2": "Croatia"
+   "team2": "Croatia",
+   "winner": "Portugal"
   },
   "m84": {
    "score": [
@@ -425,6 +430,10 @@
   "m92": {
    "team1": "Mexico",
    "team2": "England"
+  },
+  "m93": {
+   "team1": "Portugal",
+   "team2": "Spain"
   },
   "m94": {
    "team1": "USA",

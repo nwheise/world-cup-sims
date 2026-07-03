@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-07-03T07:43:25Z",
+ "fetched_at": "2026-07-03T21:35:54Z",
  "group_results": {
   "Algeria|Austria": [
    3,
@@ -417,8 +417,13 @@
    "team2": "Ghana"
   },
   "m88": {
+   "score": [
+    1,
+    1
+   ],
    "team1": "Australia",
-   "team2": "Egypt"
+   "team2": "Egypt",
+   "winner": "Egypt"
   },
   "m89": {
    "team1": "Paraguay",

@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-07-04T04:07:26Z",
+ "fetched_at": "2026-07-04T19:41:58Z",
  "group_results": {
   "Algeria|Austria": [
    3,
@@ -440,8 +440,13 @@
    "team2": "France"
   },
   "m90": {
+   "score": [
+    0,
+    3
+   ],
    "team1": "Canada",
-   "team2": "Morocco"
+   "team2": "Morocco",
+   "winner": "Morocco"
   },
   "m91": {
    "team1": "Brazil",

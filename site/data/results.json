@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-07-07T20:18:51Z",
+ "fetched_at": "2026-07-07T23:25:51Z",
  "group_results": {
   "Algeria|Austria": [
    3,
@@ -291,6 +291,10 @@
   ]
  },
  "knockout": {
+  "m100": {
+   "team1": "Argentina",
+   "team2": "Switzerland"
+  },
   "m73": {
    "score": [
     0,
@@ -499,8 +503,13 @@
    "winner": "Argentina"
   },
   "m96": {
+   "score": [
+    0,
+    0
+   ],
    "team1": "Switzerland",
-   "team2": "Colombia"
+   "team2": "Colombia",
+   "winner": "Switzerland"
   },
   "m97": {
    "team1": "France",

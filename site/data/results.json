@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-07-07T23:25:51Z",
+ "fetched_at": "2026-07-09T23:40:42Z",
  "group_results": {
   "Algeria|Austria": [
    3,
@@ -512,8 +512,13 @@
    "winner": "Switzerland"
   },
   "m97": {
+   "score": [
+    2,
+    0
+   ],
    "team1": "France",
-   "team2": "Morocco"
+   "team2": "Morocco",
+   "winner": "France"
   },
   "m98": {
    "team1": "Spain",

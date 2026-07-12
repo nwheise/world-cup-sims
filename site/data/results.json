@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-07-10T22:28:45Z",
+ "fetched_at": "2026-07-12T00:14:17Z",
  "group_results": {
   "Algeria|Austria": [
    3,
@@ -534,8 +534,13 @@
    "winner": "Spain"
   },
   "m99": {
+   "score": [
+    1,
+    2
+   ],
    "team1": "Norway",
-   "team2": "England"
+   "team2": "England",
+   "winner": "England"
   }
  },
  "source": "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260611-20260719&limit=200"

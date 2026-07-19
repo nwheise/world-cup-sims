@@ -1,5 +1,5 @@
 {
- "fetched_at": "2026-07-18T23:14:05Z",
+ "fetched_at": "2026-07-19T22:12:06Z",
  "group_results": {
   "Algeria|Austria": [
    3,
@@ -328,8 +328,13 @@
    "winner": "England"
   },
   "m104": {
+   "score": [
+    1,
+    0
+   ],
    "team1": "Spain",
-   "team2": "Argentina"
+   "team2": "Argentina",
+   "winner": "Spain"
   },
   "m73": {
    "score": [

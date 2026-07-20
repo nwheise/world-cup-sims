@@ -7,7 +7,7 @@ game** to maximize the chance your favorite teams end up playing in front of you
 live-updating probabilities for every knockout matchup, group, and the title.
 
 Everything runs in your browser. There is no backend, no account, and nothing to pay for:
-a static GitHub Pages site, live results refreshed by a scheduled GitHub Action, and your
+a static GitHub Pages site, the final tournament results committed as static data, and your
 picks stored in localStorage on your own device.
 
 Web Analytics with GoatCounter: https://worldcupcheerguide.goatcounter.com/
@@ -66,8 +66,9 @@ earlier match, using only the results played up to that point.
   tournament. No host advantage, no injuries — a planning toy, not a betting model.
 - **Live results**: played games are pinned as fact and only the remainder is simulated, so
   every probability sharpens as the tournament unfolds. Results come from ESPN's public
-  scoreboard API (keyless, near-live). A GitHub Action refreshes `site/data/results.json`
-  hourly and redeploys when anything changed.
+  scoreboard API (keyless, near-live). During the tournament a GitHub Action refreshed
+  `site/data/results.json` hourly; now that it's over, the results are final and committed as
+  static data (`scripts/update_results.py` remains for manual refreshes).
 - **Instant personalization**: the worker keeps compact per-simulation records (~216
   bytes/sim — every game outcome, every knockout participant), so changing your teams or
   matches re-aggregates instantly without re-simulating.
@@ -82,7 +83,7 @@ earlier match, using only the results played up to that point.
 | `annex_c.txt` | FIFA's official Annex C third-place allocation table (all 495 rows), fully re-validated on every `build_data.py` run. |
 | `tests/` | JS test suite for the simulator, must-watch scoring, and time machine (`node --test`, no npm deps). |
 | `test_update_results.py` | Python tests for the data pipeline (ESPN parser, embedded data, Annex C). |
-| `.github/workflows/site.yml` | Push → test + deploy Pages; hourly cron → refresh results, commit if changed, test + deploy. |
+| `.github/workflows/site.yml` | Push (or manual dispatch) → test + deploy Pages. (The hourly results-refresh cron was removed once the tournament ended.) |
 
 ## Development
 

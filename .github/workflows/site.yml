@@ -1,10 +1,10 @@
-# Builds and deploys the static site to GitHub Pages, and — on the schedule —
-# refreshes site/data/results.json (from the ESPN scoreboard) so the deployed
-# probabilities track the real tournament.
+# Builds and deploys the static site to GitHub Pages.
 #
-# One workflow on purpose: commits pushed with GITHUB_TOKEN do not trigger
-# other workflows, so the scheduled run must deploy Pages itself after
-# committing fresh results.
+# During the tournament (June 11 – July 19, 2026) this workflow also refreshed
+# site/data/results.json from the ESPN scoreboard on an hourly cron. The
+# tournament is over and the results are final, so the scheduled refresh has
+# been removed — results.json is now just another committed static file.
+# (scripts/update_results.py stays in the repo as a manual tool.)
 #
 # One-time repo setup: Settings -> Pages -> Source: "GitHub Actions".
 
@@ -13,14 +13,6 @@ name: site
 on:
   push:
     branches: [main]
-  schedule:
-    # Hourly during the tournament (June 11 – July 19, 2026). GitHub cron is
-    # best-effort — firings are routinely 30-90 min late or skipped under
-    # load (observed June 11) — so hourly slots keep the effective refresh
-    # near the intended cadence. Unchanged-result runs cost ~35s and commit
-    # nothing. update_results.py becomes a no-op after Aug 1; feel free to
-    # delete the schedule after the final.
-    - cron: "23 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -40,32 +32,6 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
-
-      - name: Refresh live results (scheduled / manual runs only)
-        id: refresh
-        if: github.event_name != 'push'
-        run: |
-          # update_results.py exits 0 on success or a transient ESPN outage, and
-          # non-zero only on a structural surprise in the feed. Don't let that
-          # abort the run here (we still want to deploy the existing data and
-          # stamp checked_at); record it and fail at the very end instead.
-          set +e
-          python3 scripts/update_results.py
-          code=$?
-          set -e
-          if [ "$code" -ne 0 ]; then
-            echo "anomaly=1" >> "$GITHUB_OUTPUT"
-            echo "::warning::update_results.py could not parse the ESPN feed (exit $code); results.json left untouched. The live-results pipeline needs attention."
-          fi
-          if [ -n "$(git status --porcelain site/data/results.json)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add site/data/results.json
-            git commit -m "Update live results from ESPN"
-            git push
-          else
-            echo "results unchanged"
-          fi
 
       - uses: actions/setup-node@v5
         with:
@@ -88,26 +54,6 @@ jobs:
           sed -i "s/\.js\"/.js?v=$V\"/g" site/js/*.js
           grep -n "?v=$V" site/index.html >/dev/null  # fail loudly if nothing stamped
 
-      - name: Stamp last-checked time (deploy-time only)
-        # The committed results.json deliberately keeps its fetched_at until
-        # scores actually change (no junk commits). checked_at goes into the
-        # DEPLOYED copy only — like the cache-bust step above, the repo file
-        # stays clean — so the site can honestly show when the live feed was
-        # last consulted. Skipped on push deploys (no feed check happened);
-        # the UI falls back to fetched_at alone.
-        if: github.event_name != 'push'
-        run: |
-          python3 - <<'EOF'
-          import json, datetime
-          path = "site/data/results.json"
-          with open(path) as f:
-              data = json.load(f)
-          data["checked_at"] = datetime.datetime.now(datetime.timezone.utc) \
-              .strftime("%Y-%m-%dT%H:%M:%SZ")
-          with open(path, "w") as f:
-              json.dump(data, f, indent=1, sort_keys=True)
-          EOF
-
       - uses: actions/configure-pages@v6
 
       - uses: actions/upload-pages-artifact@v5
@@ -116,13 +62,3 @@ jobs:
 
       - id: deployment
         uses: actions/deploy-pages@v5
-
-      - name: Fail the run if the results refresh hit an anomaly
-        # The site has already deployed above. Failing here (after the deploy)
-        # turns a structural feed problem into a red run, so GitHub's Actions
-        # failure notification emails us — otherwise a broken parser sits silent.
-        # Enable "Actions" failure emails under GitHub Settings -> Notifications.
-        if: always() && steps.refresh.outputs.anomaly == '1'
-        run: |
-          echo "The live-results refresh flagged an anomaly — see the warning above." >&2
-          exit 1
